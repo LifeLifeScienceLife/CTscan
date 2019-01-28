@@ -1,15 +1,18 @@
 # A porosity calculator designed to work with essentially any CT scan, assuming that the sample is relatively closed.
 # Works using a shrinkwrap ROI approach to delineate the boundary of our sample within the image. Given a boundary,
 # computing porosity simply involves taking a ratio of dark/light pixels. Does not produce accurate results if: images
-# are in any color other than black and white, have lots of noisy pixels, sample has large gaps in its boundary.
+# are in any color other than black and white, have lots of noisy pixels, sample has large gaps in its boundary. This
+# version includes the excel file writer, better documentation and a temporary fix for the zero division problem.
 
 import glob
 import cv2
 import numpy as np
-import time
 import matplotlib.pyplot as plt
 import random
 import sys
+import time
+import openpyxl
+from openpyxl import load_workbook
 
 file_location = None
 loop_inc = 1  # Represents the step for the main loop, skips loop_inc - 1 images (Increase to speed up runtime)
@@ -19,6 +22,10 @@ save_count = 0  # Keeps track of how many comparison images are saved (for namin
 
 # Main control for the program. Reads in images and iterates them through shape_outliner and then por_calc
 def main():
+	wb_ws_save = excel_handler()  # Setup excel sheet
+	wb = wb_ws_save[0]  # The current workbook
+	ws = wb_ws_save[1]  # The current sheet within the workbook
+	save_as = wb_ws_save[2]  # The title of the current workbook
 
 	images = file_reader()  # Read in images
 	porosities = []
@@ -32,10 +39,18 @@ def main():
 		if total_img_pixels != 0:  # Exclude all-black images
 			shape = shape_outliner(images[i])
 			total_shape_pixels = np.count_nonzero(shape)
-			porosities.append(por_calc(total_img_pixels, total_shape_pixels))
+			if total_shape_pixels != 0:  # Because some all black images are "sneaking through", do a second check!
+				porosities.append(por_calc(total_img_pixels, total_shape_pixels))
 
-	porosities = np.array(porosities)
-	print("Porosity: " + str(np.average(porosities)))
+	if len(porosities) != 0:
+		porosity = np.average(np.array(porosities))
+	else:
+		porosity = 0
+
+	data_writer(ws, porosity)
+	wb.save(save_as)
+
+	print("Porosity: " + str(porosity))
 
 	end = time.time()
 	print("Time: " + str(end - start))
@@ -60,6 +75,50 @@ def file_reader():
 	return images
 
 
+# Loads in a pre existing excel file or creates a new one for writing based on user input
+def excel_handler():
+	valid_file = False
+
+	while not valid_file:
+		old_excel = input("Would you like to use an existing excel file Y OR N: ")
+		if old_excel == "Y" or old_excel == "y":
+			excel_file = input("Please specify the file name with proper suffix i.e sheet1.xlsx: ")
+			try:
+				wb = load_workbook(excel_file)
+				ws = wb.active
+				save_as = excel_file
+				valid_file = True
+			except IOError:
+				print("Your specified file does not exist, please try again")
+
+		elif old_excel == "N" or old_excel == "n":
+			valid_file = True
+			wb = openpyxl.Workbook()
+			save_as = input("What would you like to save the excel book as: ")
+			save_as = save_as + ".xlsx"
+			for chars in save_as:
+				if chars in [':', '*', '?', '"', '<', '>', '|'] or ord(chars) == 92 or ord(chars) == 47:
+					print("This is not a valid file name, it contains a :,*,?,<,>,|,/ etc. ")
+					valid_file = False
+			ws = wb.active
+
+		else:
+			print("Sorry, I didn't understand that.")
+			continue
+
+	return wb, ws, save_as
+
+
+# Given a excel sheet, data_writer writes the porosity previously computed to the excel sheet with a clean format
+def data_writer(ws, porosity):
+	i = 1  # We loop to find empty cells before outputting the results
+	while ws.cell(row=i, column=1).value is not None and ws.cell(row=i + 1, column=1).value is not None:
+		i += 3
+	ws.cell(row=i, column=1).value = "Trial %d" % (i // 3)
+	ws.cell(row=i + 1, column=1).value = "Porosity:"
+	ws.cell(row=i + 1, column=2).value = porosity
+
+
 # Randomly saves an image based on a tunable probability "odds" within functions
 def random_saver():
 	odds = 10  # Think of this as probability to save = 1/odds
@@ -73,10 +132,12 @@ def image_saver(image, shape):
 
 	plt.clf()
 	plt.subplot(2, 1, 1)
+	plt.title("Original Image")
 	plt.imshow(image, cmap="gray")
 	plt.subplot(2, 1, 2)
+	plt.title("Shape outlined Image")
 	plt.imshow(shape, cmap="gray")
-	plt.savefig(file_location + " Comparison Number " + str(save_count) + ".png")
+	plt.savefig(file_location + "\Comparison_Number_" + str(save_count) + ".png")
 	save_count += 1
 
 
@@ -125,8 +186,8 @@ def shape_outliner(image):
 
 
 # Returns the porosity given a count of bright pixels vs amount of total pixels
-def por_calc(bright_pixels, total_pixels):
-	return (1 - (bright_pixels/float(total_pixels))) * 100
+def por_calc(image_bright_pixels, shape_bright_pixels):
+	return (1 - (image_bright_pixels/float(shape_bright_pixels))) * 100
 
 
 main()
