@@ -23,12 +23,13 @@ save_count = 0  # Keeps track of how many comparison images are saved (for namin
 # Main control for the program. Reads in images, crops them to a smaller size, performs a ROI shrinkwrap, measures
 # the porosity and records it to a excel file
 def main():
+	images = file_reader()  # Read in images
+
 	wb_ws_save = excel_handler()  # Setup excel sheet
 	wb = wb_ws_save[0]  # The current workbook
 	ws = wb_ws_save[1]  # The current sheet within the workbook
 	save_as = wb_ws_save[2]  # The title of the current workbook
 
-	images = file_reader()  # Read in images
 	parameters = crop_parameters(images)    # Get the universal parameters for future cropping operations
 
 	porosities = []
@@ -87,7 +88,7 @@ def excel_handler():
 	while not valid_file:
 		old_excel = input("Would you like to use an existing excel file Y OR N: ")
 		if old_excel == "Y" or old_excel == "y":  # User has selected a pre-existing workbook
-			excel_file = input("Please specify the path to your excel file, including the file name: ") + ".xlsx"
+			excel_file = file_location + "/" + input("Please specify the excel file name: ") + ".xlsx"
 			try:
 				wb = load_workbook(excel_file)
 				ws = wb.active
@@ -98,8 +99,9 @@ def excel_handler():
 
 		elif old_excel == "N" or old_excel == "n":  # User has selected to create a new workbook
 			wb = openpyxl.Workbook()
-			save_as = input("What would you like to save the excel book as: ") + ".xlsx"
+			save_as = input("What would you like to save the excel book as: ")
 			if re.match("^[A-Za-z0-9_+@#^&()_,.!-]*$", save_as):
+				save_as = file_location + "/" + save_as + ".xlsx"
 				ws = wb.active
 				valid_file = True
 			else:
