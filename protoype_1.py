@@ -126,7 +126,7 @@ def data_writer(ws, porosity):
 
 # Randomly saves an image based on a tunable probability "odds" within functions
 def random_saver():
-	odds = 10  # Think of this as probability to save = 1/odds
+	odds = 100  # Think of this as probability to save = 1/odds
 	x = random.randrange(odds)
 	return x == odds - 1
 
@@ -223,8 +223,8 @@ def crop(img, dimensions):
 			int(dimensions[2] // scale):img.shape[1] - int(dimensions[3] // scale)]
 
 	# Randomly choose to save a comparison image (Ensure cropper works properly)
-	if random_saver():
-		image_saver(img, crop_img, "Original Image", "Cropped image")
+	# if random_saver():
+	# 	image_saver(img, crop_img, "Original Image", "Cropped image")
 
 	return crop_img
 
@@ -262,7 +262,7 @@ def shape_outliner(image):
 				width_index += width_inc
 			shape[height_index, 0:width_index] = 0  # Color the pixels we just iterated through black in shape array
 
-	shape = cv2.medianBlur(shape.astype(np.float32), 5)  # Sooth images to remove border irregularities
+	# shape = cv2.medianBlur(shape.astype(np.float32), 5)  # Sooth images to remove border irregularities
 
 	# Randomly choose to save a comparison image (Ensure shape outliner works properly)
 	if random_saver():
