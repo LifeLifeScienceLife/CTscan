@@ -41,8 +41,8 @@ def main():
 		progress_tracker(i + 1, len(images))  # Shows user the programs progress
 		total_img_pixels = np.count_nonzero(images[i])
 		if total_img_pixels > 10:  # Exclude images that contain little to no white pixels
-			crop(images[i], parameters)  # Crop the images
-			shape = shape_outliner(images[i])
+			crop_img = crop(images[i], parameters)  # Crop the images
+			shape = shape_outliner(crop_img)
 			total_shape_pixels = np.count_nonzero(shape)
 			if total_shape_pixels != 0:  # Because some all black images are "sneaking through", do a second check!
 				porosities.append(por_calc(total_img_pixels, total_shape_pixels))
@@ -218,7 +218,7 @@ def left_right_shutter_close(image, width_index, height, increment):
 
 # Given an image and a list of parameters, crops the image to a smaller dimension for faster future processing
 def crop(img, dimensions):
-	scale = 1.5
+	scale = 1
 	crop_img = img[int(dimensions[0] // scale):img.shape[0] - int(dimensions[1] // scale),
 			int(dimensions[2] // scale):img.shape[1] - int(dimensions[3] // scale)]
 
