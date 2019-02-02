@@ -218,7 +218,7 @@ def left_right_shutter_close(image, width_index, height, increment):
 
 # Given an image and a list of parameters, crops the image to a smaller dimension for faster future processing
 def crop(img, dimensions):
-	scale = 1
+	scale = 1.2
 	crop_img = img[int(dimensions[0] // scale):img.shape[0] - int(dimensions[1] // scale),
 			int(dimensions[2] // scale):img.shape[1] - int(dimensions[3] // scale)]
 
@@ -242,19 +242,19 @@ def shape_outliner(image):
 	for j in range(0, height):
 		width_index = width - 1  # Right hand side of image
 		height_index = j  # Top of image
-		if np.count_nonzero(cur_i[height_index, 0:width]) < 2:  # Check if there are any white pixels in current row
+		if np.count_nonzero(cur_i[height_index, 0:width]) == 0:  # Check if there are any white pixels in current row
 			shape[height_index, 0:width] = 0
 		else:
 			while cur_i[
 				height_index, width_index] == 0 and width_index > width_inc:  # Loop until white pixel or boundary found
 				width_index -= width_inc
-			shape[height_index, width_index:width] = 0  # Color the pixels we just iterated through black in shape array
+			shape[height_index, width_index + 1:width] = 0  # Color the pixels we just iterated through black in shape array
 
 	# Move left to right moving down
 	for j in range(0, height):
 		width_index = 0  # Left hand side of image
 		height_index = j  # Top of image
-		if np.count_nonzero(cur_i[height_index, 0:width]) < 2:  # Check if there are any white pixels in current row
+		if np.count_nonzero(cur_i[height_index, 0:width]) == 0:  # Check if there are any white pixels in current row
 			shape[height_index, 0:width] = 0
 		else:
 			while cur_i[
