@@ -29,7 +29,9 @@ def main():
 	while not valid_voxel_size:
 		voxel_size = input("What is the voxel size for your images in um: ")
 		try:
-			voxel_size = int(voxel_size) ** 3
+			voxel_size = np.float64(voxel_size) * (10 ** -4)  # Converting um to cm
+			voxel_size = voxel_size ** 3  # Cubing cm
+			print(voxel_size)
 			valid_voxel_size = True
 		except ValueError:
 			print("Please enter an integer")
@@ -340,7 +342,7 @@ def despeckle(image, min_area):
 # Counts the volume for a CT scan (Multiply the surface area by voxel size) Returns volume in cm^3 (I think)
 # NOTE: Assumes no porosity in volume calculation, for 'real' volume, simply subtract volume*porosity from this volume
 def count_volume(total_voxels, voxel_size):
-	volume = np.float64(total_voxels * voxel_size) * (10 ** - 10)
+	volume = total_voxels * voxel_size
 	return volume
 
 
