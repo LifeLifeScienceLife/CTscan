@@ -1,24 +1,20 @@
-import glob
-import re
 import cv2
-import numpy as np
-import time
-import matplotlib.pyplot as plt
+import glob
 import random
+import re
 import sys
+import numpy as np
 import openpyxl
 from openpyxl import load_workbook
 from skimage.morphology import remove_small_objects
 from scipy.ndimage import label
 
 file_location = None
-loop_inc = 1  # Represents the step for the main loop, skips loop_inc - 1 images (Increase to speed up runtime)
 width_inc = 1  # Represents the inc/decrement step in shape outliner (Increase to speed up runtime)
-save_count = 0  # Keeps track of how many comparison images are saved (for naming purposes)
 
 
 # Main control for the program. Reads in images, creates/loads in excel file, calls functions that preform image
-# processing (Thresholding, Despeckling and Cropping) and image analysis (Measure porosity and volume). Main also
+# processing (Thresholding, Despeckeling and Cropping) and image analysis (Measure porosity and volume). Main also
 # saves the results to an excel file and includes a timer for testing the applications performance.
 def main():
 	images = file_reader()  # Read in images
@@ -28,9 +24,15 @@ def main():
 	ws = wb_ws_save[1]  # The current sheet within the workbook
 	save_as = wb_ws_save[2]  # The title of the current workbook
 
-	voxel_size = int(input("What is the voxel size for your images in um: ")) ** 3
+	valid_voxel_size = False
 
-	start = time.time()
+	while not valid_voxel_size:
+		voxel_size = input("What is the voxel size for your images in um: ")
+		try:
+			voxel_size = int(voxel_size) ** 3
+			valid_voxel_size = True
+		except ValueError:
+			print("Please enter an integer")
 
 	images = image_processor(images)
 
@@ -46,14 +48,7 @@ def main():
 
 	volume = count_volume(surface_area, voxel_size)
 
-	print("Porosity: " + str(porosity))
-	print("Volume: " + str(volume))
-
-	end = time.time()
-	print("Time: " + str(end - start))
-
 	data_writer(ws, porosity, volume)  # Write the porosity to the excel file
-
 	wb.save(save_as)  # Saves the excel file
 
 
@@ -62,13 +57,12 @@ def main():
 # which is later multiplied by voxel size to estimate object volume. Likewise a ratio between bright pixels in the
 # shape outlined image vs original image is used to estimate porosity. These values are then returned to main.
 def analyze(images):
-
 	porosities = []
 	surface_area = 0
 
 	# Iterate through the images counting porosity and surface area for each slice
-	for i in range(0, len(images), loop_inc):
-		progress_tracker(i + 1, len(images))  # Shows user the programs progress
+	for i in range(0, len(images)):
+		progress_tracker(i + 1, len(images), 'Porosity estimation ')  # Shows user the programs progress
 		total_img_pixels = np.count_nonzero(images[i])
 		if total_img_pixels > 10:  # Exclude images that contain little to no white pixels
 			shape = shape_outliner(images[i])
@@ -80,33 +74,36 @@ def analyze(images):
 
 
 # Image processors handles all image processing procedures which includes thresholding, despeckeling and cropping.
-# TODO Implement more thresholding techniques, show users an example of each one
 # The despeckle and crop functionality are essentially complete, but may need to be reworked with UI implementation
 def image_processor(images):
 	# Threshold all images (Currently only Otsus Threshold)
-	for i in range(0, len(images), loop_inc):
+	for i in range(0, len(images)):
+		progress_tracker(i + 1, len(images), 'Thresholding ')  # Shows user the programs progress
 		images[i] = thresholder(images[i])
 
 	# Despeckle all images, 3 option, speckles less than, greater than or auto despeckle
-	despeckle_options = input("Your options for despeckeling are as follows \n1) Remove white specks less than x\n2) "
-								"Remove white specks less greater than x\n3) Auto-Despeckle\nChoose your option: ")
+	despeckle_options = input("\nYour options for despeckeling are as follows \n1) Remove white specks less than x\n2) "
+	"Remove white specks greater than x\n3) Auto-Despeckle\n4) Skip\nChoose your option: ")
 	if despeckle_options == "1":
 		min_area = int(input("Remove speckles of size less than: "))
 	elif despeckle_options == "2":
 		min_area = int(input("Remove speckles of size greater than: "))
-	else:
+	elif despeckle_options == "3":
 		min_area = auto_despeckle_parameters(images)
 
-	for i in range(0, len(images)):
-		despeckle_img = despeckle(images[i], min_area)
-		if despeckle_options == "2":  # Using XOR to simulate despeckle of objects greater than X
-			images[i] = np.logical_xor(images[i], despeckle_img)
-		else:
-			images[i] = despeckle_img
+	if despeckle_options != "4":
+		for i in range(0, len(images)):
+			progress_tracker(i + 1, len(images), 'Despeckeling ')  # Shows user the programs progress
+			despeckle_img = despeckle(images[i], min_area)
+			if despeckle_options == "2":  # Using XOR to simulate despeckle of objects greater than X
+				images[i] = np.logical_xor(images[i], despeckle_img)
+			else:
+				images[i] = despeckle_img
 
 	# Crop all images
 	parameters = crop_parameters(images)  # Get the universal parameters for future cropping operations
-	for i in range(0, len(images), loop_inc):
+	for i in range(0, len(images)):
+		progress_tracker(i + 1, len(images), 'Cropping ')  # Shows user the programs progress
 		images[i] = crop(images[i], parameters)
 
 	return images
@@ -176,35 +173,12 @@ def data_writer(ws, porosity, volume):
 	ws.cell(row=i + 2, column=2).value = volume
 
 
-# Randomly saves an image based on a tunable probability "odds" within functions
-def random_saver():
-	odds = 100  # Think of this as probability to save = 1/odds
-	x = random.randrange(odds)
-	return x == odds - 1
-
-
-# Saves a plot showing a image and its corresponding shape outline, allows user to ensure proper operation of code
-def image_saver(image1, image2, title1, title2):
-	global save_count
-
-	plt.clf()
-	plt.subplot(2, 1, 1)
-	plt.title(title1)
-	plt.imshow(image1, cmap="gray")
-	plt.subplots_adjust(hspace=.5)  # Adjusts the spacing so the plots do not overlap
-	plt.subplot(2, 1, 2)
-	plt.title(title2)
-	plt.imshow(image2, cmap="gray")
-	plt.savefig(file_location + "\Comparison_Number_" + str(save_count) + ".png")
-	save_count += 1
-
-
 # Displays the progress of the program (percent wise) to the terminal. Inspired by:
 # https://stackoverflow.com/questions/43515165/pycharm-python-console-printing-on-the-same-line-not-working-as-intended
-def progress_tracker(completion, total):
-	sys.stdout.write("\r{0}".format(str("%.2f" % (completion / total * 100)) + "% Complete"))
+def progress_tracker(completion, total, operation):
+	sys.stdout.write("\r{0}".format(operation + str("%.2f" % (completion / total * 100)) + "% Complete"))
 	sys.stdout.flush()
-	if completion == total:
+	if completion == total and operation == 'Porosity estimation ':
 		print("\nDONE!")
 
 
@@ -249,7 +223,7 @@ def top_down_shutter_close(image, height_index, width, increment):
 	counter = 0
 
 	# The loop ensure we do not stop at a faulty value caused by image noise, must be more than 10 non zero pixels in plane
-	while np.count_nonzero(image[height_index, 0:width]) < 10:
+	while np.count_nonzero(image[height_index, 0:width]) < 10 and height_index < image.shape[0]:
 		height_index += increment
 		counter += 1
 
@@ -261,7 +235,7 @@ def left_right_shutter_close(image, width_index, height, increment):
 	counter = 0
 
 	# The loop ensure we do not stop at a faulty value caused by image noise, must be more than 10 non zero pixels in plane
-	while np.count_nonzero(image[0:height, width_index]) < 10:
+	while np.count_nonzero(image[0:height, width_index]) < 10 and width_index < image.shape[1]:
 		width_index += increment
 		counter += 1
 
@@ -272,11 +246,7 @@ def left_right_shutter_close(image, width_index, height, increment):
 def crop(img, dimensions):
 	scale = 1
 	crop_img = img[int(dimensions[0] // scale):img.shape[0] - int(dimensions[1] // scale),
-	           int(dimensions[2] // scale):img.shape[1] - int(dimensions[3] // scale)]
-
-	# Randomly choose to save a comparison image (Ensure cropper works properly)
-	# if random_saver():
-	# 	image_saver(img, crop_img, "Original Image", "Cropped image")
+	int(dimensions[2] // scale):img.shape[1] - int(dimensions[3] // scale)]
 
 	return crop_img
 
@@ -316,10 +286,7 @@ def shape_outliner(image):
 			shape[height_index, 0:width_index] = 0  # Color the pixels we just iterated through black in shape array
 
 	# shape = cv2.medianBlur(shape.astype(np.float32), 5)  # Sooth images to remove border irregularities
-
-	# Randomly choose to save a comparison image (Ensure shape outliner works properly)
-	if random_saver():
-		image_saver(image, shape, "Original Image", "Shape outlined image")
+	# In really low porosity samples can lead to negative porosity values, uncomment with caution.
 
 	return shape
 
@@ -343,6 +310,7 @@ def auto_despeckle_parameters(images):
 	min_area_array = np.zeros([images_considered])
 
 	for i in range(0, images_considered):
+		progress_tracker(i + 1, images_considered, 'Starting Auto Crop ')
 		random_img = images[random.randrange(len(images))]  # Select a random image from the stack
 		bool_arr = np.array(random_img, bool)  # Convert it into a boolean array (needed for small objects method)
 
@@ -350,8 +318,9 @@ def auto_despeckle_parameters(images):
 		num_features = -1
 
 		# Loop increasing min object size until only one object is left in the image
-		while num_features != 1:
-			min_obj_size += 1
+		while num_features != 1 and min_obj_size < 100:
+			print(num_features)
+			min_obj_size += 10
 			filtered_img = remove_small_objects(bool_arr, min_obj_size)
 			null, num_features = label(filtered_img)
 
