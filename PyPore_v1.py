@@ -31,12 +31,11 @@ def main():
 		try:
 			voxel_size = np.float64(voxel_size) * (10 ** -4)  # Converting um to cm
 			voxel_size = voxel_size ** 3  # Cubing cm
-			print(voxel_size)
 			valid_voxel_size = True
 		except ValueError:
 			print("Please enter an integer")
 
-	images = image_processor(images)
+	# images = image_processor(images)
 
 	results = analyze(images)  # Results computes porosity/ surface area for each slice
 	porosities = results[0]
@@ -51,7 +50,15 @@ def main():
 	volume = count_volume(surface_area, voxel_size)
 
 	data_writer(ws, porosity, volume)  # Write the porosity to the excel file
-	wb.save(save_as)  # Saves the excel file
+
+	sheet_open = False
+
+	while not sheet_open:
+		try:
+			wb.save(save_as)  # Saves the excel file
+			sheet_open = True
+		except PermissionError:
+			input("Please close the excel sheet, and press Y to continue: ")
 
 
 # Analyze preforms porosity and surface area measurements on binary images. First each image gets a ROI shrinkwrap
@@ -149,7 +156,7 @@ def excel_handler():
 		elif old_excel == "N" or old_excel == "n":  # User has selected to create a new workbook
 			wb = openpyxl.Workbook()
 			save_as = input("What would you like to save the excel book as: ")
-			if re.match("^[A-Za-z0-9_+@#^&()_,.!-]*$", save_as):
+			if re.match("^[A-Za-z0-9_+@#^&(),.!-]*$", save_as):
 				save_as = file_location + "/" + save_as + ".xlsx"
 				ws = wb.active
 				valid_file = True
