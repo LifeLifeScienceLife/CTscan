@@ -4,6 +4,9 @@ from PIL import ImageTk, Image
 import PyPore_New_GUI
 import cv2
 
+skip_threshold = False
+skip_despeckle = False
+
 
 # Basic outline of a window for which all other window variants will inherit from
 class Window(Frame):
@@ -77,25 +80,29 @@ class IntroWindow(Window):
 			self.add_excel.config(state='active')
 
 	def excel_browse(self):
-		ExcelPopup(Toplevel())
-		self.add_info.config(state='active')
+		ExcelPopup(Toplevel(), self)
 
 	def additional_info(self):
 		AddInfoPopup(Toplevel(), self)
 
 	def transition(self):
 		self.destroy()
-		ThresholdWindow(self.parent)
+		if skip_threshold and skip_despeckle:
+			FinalWindow(self.parent)
+		elif skip_threshold:
+			DespeckleWindow(self.parent)
+		else:
+			ThresholdWindow(self.parent)
 
 
 class ExcelPopup(PopupWindow):
-	def __init__(self, parent):
+	def __init__(self, parent, bottom_window):
 		super().__init__(parent)
 		self.parent = parent
-
+		self.bottom_window = bottom_window
 		self.grid()
-		var = IntVar()
 
+		var = IntVar()
 		Label(self, text="Would you like to use an existing excel file?").grid(row=0, column=0, columnspan=2)
 		Radiobutton(self, text="Yes", variable=var, value=1, command=lambda: self.excel_handler(True)).grid(row=1, column=0)
 		Radiobutton(self, text="No", variable=var, value=2, command=lambda: self.excel_handler(False)).grid(row=1, column=1)
@@ -108,10 +115,12 @@ class ExcelPopup(PopupWindow):
 
 	def old_excel_browse(self):
 		if PyPore_New_GUI.old_excel_reader(filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])):
+			self.bottom_window.add_info.config(state='active')
 			self.parent.destroy()
 
 	def new_excel_browse(self):
 		if PyPore_New_GUI.new_excel_reader(filedialog.asksaveasfilename(filetypes=[("Excel files", "*.xlsx")])):
+			self.bottom_window.add_info.config(state='active')
 			self.parent.destroy()
 
 
@@ -123,8 +132,8 @@ class AddInfoPopup(PopupWindow):
 		self.grid()
 
 		Label(self, text="Enter the Voxel Size in um").grid(row=2, column=0)
-		Voxel_Entry = Entry(self)
-		Voxel_Entry.grid(row=2, column=1)
+		self.Voxel_Entry = Entry(self)
+		self.Voxel_Entry.grid(row=2, column=1)
 
 		Empty_Label = Label(self, text="")
 		Empty_Label.grid(row=2, column=0, columnspan=2, sticky=(E+W))
@@ -139,7 +148,7 @@ class AddInfoPopup(PopupWindow):
 		Empty_Label_2.grid(row=5, column=0, columnspan=2, ipady=10, sticky=(E+W))
 
 		self.var2 = IntVar(0)
-		Label(self, text="Would you like to save the output images?").grid(row=3, column=0, columnspan=2)
+		Label(self, text="Would you like to save the new images?").grid(row=3, column=0, columnspan=2)
 		Radiobutton(self, text="Yes", variable=self.var2, value=3, command=lambda: Empty_Label_2.lower()).grid(row=4, column=0)
 		Radiobutton(self, text="No", variable=self.var2, value=4, command=lambda: Empty_Label_2.lift()).grid(row=4, column=1)
 
@@ -155,18 +164,26 @@ class AddInfoPopup(PopupWindow):
 
 		Button(self, text="Continue", command=self.submit_info).grid(row=10, column=0, columnspan=2)
 
-	#TODO IMPLEMENT ADD INFO SUBMIT
 	def submit_info(self):
+		global skip_despeckle, skip_threshold
+
 		if 0 in [self.var1.get(), self.var2.get(), self.var3.get(), self.var4.get()]:
-			print("Nope")
+			popupmsg("Please fill out all the fields")
 		else:
+			if self.var1.get() == 1:
+				PyPore_New_GUI.set_voxel_size(self.Voxel_Entry.get())
+			if self.var3.get() == 5:
+				skip_threshold = True
+			if self.var4.get() == 7:
+				skip_despeckle = True
 			self.parent.destroy()
 			IntroWindow.transition(self.below_window)
 
-	#TODO IMPLEMENT SAVE IMAGES
 	def save_images(self):
-		if PyPore_New_GUI.save_images_as(filedialog.asksaveasfilename()):
-			pass
+		img_file_path = (filedialog.asksaveasfilename(filetypes=[(".jpg", "*.jpg")]))
+		if not PyPore_New_GUI.save_images_as(img_file_path):
+			popupmsg("Please Input A Valid Filename")
+			self.var3.set(0)
 
 
 class ThresholdWindow(Window):
@@ -177,13 +194,13 @@ class ThresholdWindow(Window):
 
 		self.grid(sticky=(E + W + N + S))
 
-		self.Otsu = Button(self, text="Otsu", command=lambda: self.image_compare_popup(1))
+		self.Otsu = Button(self, text="Otsu", command=lambda: Image_Comparison(Toplevel(), 1, self, "Thresholding"))
 		self.Otsu.grid(row=0, column=1, sticky=(E + W + N + S))
 
-		self.Gmeans = Button(self, text="Global Means", command=lambda: self.image_compare_popup(2))
+		self.Gmeans = Button(self, text="Global Means", command=lambda: Image_Comparison(Toplevel(), 2, self, "Thresholding"))
 		self.Gmeans.grid(row=1, column=1, sticky=(E + W + N + S))
 
-		self.Phan = Button(self, text="Phansalkar", command=lambda: self.image_compare_popup(3))
+		self.Phan = Button(self, text="Phansalkar", command=lambda: Image_Comparison(Toplevel(), 3, self, "Thresholding"))
 		self.Phan.grid(row=2, column=1, sticky=(E + W + N + S))
 
 		tk_img = ImageTk.PhotoImage(file="Logo.gif")
@@ -193,12 +210,12 @@ class ThresholdWindow(Window):
 
 		self.columnconfigure(1, weight=1)
 
-	def image_compare_popup(self, choice):
-		Image_Comparison(Toplevel(), choice, self, "Thresholding")
-
 	def transition(self):
 		self.destroy()
-		DespeckleWindow(self.parent)
+		if skip_despeckle:
+			FinalWindow(self.parent)
+		else:
+			DespeckleWindow(self.parent)
 
 
 class DespeckleWindow(Window):
@@ -209,13 +226,13 @@ class DespeckleWindow(Window):
 
 		self.grid(sticky=(E + W + N + S))
 
-		self.less = Button(self, text="Remove white specks less than: X", command=lambda: self.image_compare_popup(1))
+		self.less = Button(self, text="Remove white specks less than: X", command=lambda: DespecklePopup(Toplevel(), 1))
 		self.less.grid(row=0, column=1, sticky=(E + W + N + S))
 
-		self.more = Button(self, text="Remove white specks greater than: X", command=lambda: self.image_compare_popup(2))
+		self.more = Button(self, text="Remove white specks greater than: X", command=lambda: DespecklePopup(Toplevel(), 2))
 		self.more.grid(row=1, column=1, sticky=(E + W + N + S))
 
-		self.skip = Button(self, text="Auto Despeckle", command=lambda: self.image_compare_popup(3))
+		self.skip = Button(self, text="Auto Despeckle", command=lambda: Image_Comparison(Toplevel(), 3, self, "Despeckeling", 10))
 		self.skip.grid(row=2, column=1, sticky=(E + W + N + S))
 
 		tk_img = ImageTk.PhotoImage(file="Logo.gif")
@@ -225,17 +242,34 @@ class DespeckleWindow(Window):
 
 		self.columnconfigure(1, weight=1)
 
-	def image_compare_popup(self, choice):
-		Image_Comparison(Toplevel(), choice, self, "Despeckeling")
-
-	#TODO FINAL TRANSITION SCREEN?
 	def transition(self):
 		self.destroy()
-		DespeckleWindow(self.parent)
+		FinalWindow(self.parent)
+
+
+class DespecklePopup(PopupWindow):
+	def __init__(self, parent, choice):
+		super().__init__(parent)
+		self.choice = choice
+		self.parent = parent
+		self.grid()
+
+		if choice == 1:
+			Label(self, text="Remove white specks less than:").grid(row=0, column=0)
+		else:
+			Label(self, text="Remove white specks greater than:").grid(row=0, column=0)
+
+		Button(self, text="Submit", command=self.transition).grid(row=1, column=0, columnspan=2)
+
+		self.Area_Entry = Entry(self)
+		self.Area_Entry.grid(row=0, column=1)
+
+	def transition(self):
+		Image_Comparison(Toplevel(), self.choice, self, "Despeckeling", int(self.Area_Entry.get()))
 
 
 class Image_Comparison(ExtendedPopupWindow):
-	def __init__(self, parent, choice, below_window, operation):
+	def __init__(self, parent, choice, below_window, operation, area=10):
 		super().__init__(parent)
 		self.parent = parent
 		self.below_window = below_window
@@ -249,8 +283,7 @@ class Image_Comparison(ExtendedPopupWindow):
 		if self.operation == "Thresholding":
 			images = PyPore_New_GUI.threshold_selector(choice)
 		else:
-			# TODO PLUG IN DESPECKLE BACKEND
-			images = PyPore_New_GUI.despeckle_selector(choice)
+			images = PyPore_New_GUI.despeckle_selector(choice, area)
 
 		OG = images[0]
 		OG = cv2.resize(OG, (300, 300))
@@ -278,6 +311,33 @@ class Image_Comparison(ExtendedPopupWindow):
 			DespeckleWindow.transition(self.below_window)
 			PyPore_New_GUI.despeckle_choice(self.choice)
 		self.parent.destroy()
+
+
+class FinalWindow(Window):
+
+	def __init__(self, parent):
+		super().__init__(parent)
+		self.parent = parent
+		self.grid(sticky=(E + W + N + S))
+		Label(self, text="THANKS FOR PARTICIPATING!").grid(sticky=(E + W + N + S))
+
+		self.columnconfigure(0, weight=1)
+		self.rowconfigure(0, weight=1)
+
+		# PyPore_New_GUI.main_flow()
+
+
+# FROM https://pythonprogramming.net/tkinter-popup-message-window/
+def popupmsg(msg):
+	popup = Tk()
+	popup.wm_title("!")
+	popup.iconbitmap('PyPore.ico')
+	popup.geometry("200x100")
+	label = Label(popup, text=msg)
+	label.pack(side="top", fill="x", pady=10)
+	B1 = Button(popup, text="Okay", command=popup.destroy)
+	B1.pack()
+	popup.mainloop()
 
 
 if __name__ == "__main__":
