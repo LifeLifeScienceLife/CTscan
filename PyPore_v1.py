@@ -35,7 +35,7 @@ def main():
 		except ValueError:
 			print("Please enter an integer")
 
-	# images = image_processor(images)
+	images = image_processor(images)
 
 	results = analyze(images)  # Results computes porosity/ surface area for each slice
 	porosities = results[0]
@@ -146,6 +146,7 @@ def excel_handler():
 		if old_excel == "Y" or old_excel == "y":  # User has selected a pre-existing workbook
 			excel_file = file_location + "/" + input("Please specify the excel file name: ") + ".xlsx"
 			try:
+				print(excel_file)
 				wb = load_workbook(excel_file)
 				ws = wb.active
 				save_as = excel_file

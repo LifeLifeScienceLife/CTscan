@@ -27,7 +27,6 @@ def main_flow():
 		images.append(cv2.imread(img_file, 0))  # Turn the files into an array of images for easier access
 
 	# Preform Thresholding
-
 	# Preform Despeckeling
 	# Preform AutoCropping
 	# Call Analyzer

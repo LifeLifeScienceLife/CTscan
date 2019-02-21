@@ -12,69 +12,12 @@ test_image = None
 glob_file = None
 workbook = None
 worksheet = None
+excel_file_name = None
 voxel_size = None
 image_file_name = None
 threshold_type = None
 despeckle_type = None
 width_inc = 1  # Represents the inc/decrement step in shape outliner (Increase to speed up runtime)
-
-
-def main_flow():
-
-	# Read in all images
-	images = []
-	for img_file in glob_file:
-		images.append(cv2.imread(img_file, 0))  # Turn the files into an array of images for easier access
-
-	for i in range(0, len(images)):
-		null, thres_img = cv2.threshold(images[i], 127, 255, cv2.THRESH_BINARY)
-		images[i] = despeckle(thres_img, despeckle_type[1])
-
-	parameters = crop_parameters(images)  # Get the universal parameters for future cropping operations
-	for i in range(0, len(images)):
-		images[i] = crop(images[i], parameters)
-
-	results = analyze(images)  # Results computes porosity/ surface area for each slice
-	porosities = results[0]
-
-	# Ensure we do not get error taking average on empty array
-	if len(porosities) != 0:
-		porosity = np.average(np.array(porosities))
-	else:
-		porosity = 0
-
-	data_writer(worksheet, porosity)
-	workbook.save("PyPore Testing")
-
-
-# Analyze preforms porosity and surface area measurements on binary images. First each image gets a ROI shrinkwrap
-# which accurately delineates the sample boundary. The total pixels of this shrinkwrap are added a surface area holder
-# which is later multiplied by voxel size to estimate object volume. Likewise a ratio between bright pixels in the
-# shape outlined image vs original image is used to estimate porosity. These values are then returned to main.
-def analyze(images):
-	# porosities = []
-	surface_area = 0
-
-	# Iterate through the images counting porosity and surface area for each slice
-	for i in range(0, len(images)):
-		total_img_pixels = np.count_nonzero(images[i])
-		if total_img_pixels > 10:  # Exclude images that contain little to no white pixels
-			shape = shape_outliner(images[i])
-			total_shape_pixels = np.count_nonzero(shape)
-			# porosities.append(por_calc(total_img_pixels, total_shape_pixels))
-			surface_area += total_shape_pixels
-
-	return surface_area
-
-
-# Given a excel sheet, data_writer writes the porosity previously computed to the excel sheet with a clean format
-def data_writer(ws, porosity):
-	i = 1  # We loop to find empty cells before outputting the results
-	while ws.cell(row=i, column=1).value is not None and ws.cell(row=i + 2, column=1).value is not None:
-		i += 4
-	ws.cell(row=i, column=1).value = "Trial %d" % (i // 3)
-	ws.cell(row=i + 1, column=1).value = "Porosity:"
-	ws.cell(row=i + 1, column=2).value = porosity
 
 
 def file_reader(file_location):
@@ -90,8 +33,17 @@ def file_reader(file_location):
 				break
 
 		file_location = file_path + "/*." + file_type
-		glob_file = (glob.glob(file_location))  # Read all files in a folder using glob
-		test_image = (cv2.imread(glob_file[len(glob_file)//2], 0))  # Try to read a file
+		glob_file_local = (glob.glob(file_location))  # Read all files in a folder using glob
+		test_image_local = (cv2.imread(glob_file_local[len(glob_file_local)//2], 0))  # Try to read a file
+
+		# Ensure user enters valid image file format
+		try:
+			cv2.resize(test_image_local, (1, 1))
+			glob_file = glob_file_local
+			test_image = test_image_local
+		except cv2.error:
+			print("Bad Format")
+			return False
 
 		return True
 
@@ -99,22 +51,27 @@ def file_reader(file_location):
 
 
 def old_excel_reader(excel_file):
-	global workbook, worksheet
+	global workbook, worksheet, excel_file_name
 
 	if excel_file is not None and len(excel_file) > 1:
 		workbook = load_workbook(excel_file)
 		worksheet = workbook.active
+		excel_file_name = excel_file
+
 		return True
 
 	return False
 
 
 def new_excel_reader(excel_file):
-	global workbook, worksheet
+	global workbook, worksheet, excel_file_name
 
 	if excel_file is not None and len(excel_file) > 1:
-		workbook = openpyxl.Workbook(excel_file)
+		excel_file = excel_file + ".xlsx"
+		workbook = openpyxl.Workbook()
 		worksheet = workbook.active
+		excel_file_name = excel_file
+
 		return True
 
 	return False
@@ -178,9 +135,8 @@ def global_threshold(image=None):
 
 def despeckle_choice(user_choice, area=None):
 	global despeckle_type
-	print(user_choice, area)
 	if despeckle_type is None:
-		despeckle_type = user_choice, area
+		despeckle_type = (user_choice, int(round(float(area))))
 
 
 def despeckle_selector(user_choice, area):
@@ -190,10 +146,13 @@ def despeckle_selector(user_choice, area):
 		return test_image, np.logical_xor(test_image, despeckle(test_image, area))
 
 
+###################################BACK END ONLY BELOW#################################################################
+
 # Despeckle images using a remove small objects function, size of objects is either user determined or found
 # automatically via random experimentation in auto crop parameters
 def despeckle(image, min_area):
 
+	min_area = int(round(float(min_area)))
 	grey_scale_conv_array = np.full((image.shape[0], image.shape[1]), 255)
 
 	bool_arr = np.array(image, bool)
@@ -306,12 +265,97 @@ def shape_outliner(image):
 				width_index += width_inc
 			shape[height_index, 0:width_index] = 0  # Color the pixels we just iterated through black in shape array
 
-	# shape = cv2.medianBlur(shape.astype(np.float32), 5)  # Sooth images to remove border irregularities
-	# In really low porosity samples can lead to negative porosity values, uncomment with caution.
-
 	return shape
 
 
 # Returns the porosity given a count of bright pixels vs amount of total pixels
 def por_calc(bright_pixels, total_pixels):
 	return (1 - (bright_pixels / float(total_pixels))) * 100
+
+
+# Displays the progress of the program (percent wise) to the terminal. Inspired by:
+# https://stackoverflow.com/questions/43515165/pycharm-python-console-printing-on-the-same-line-not-working-as-intended
+def progress_tracker(completion, total, operation):
+	sys.stdout.write("\r{0}".format(operation + str("%.2f" % (completion / total * 100)) + "% Complete"))
+	sys.stdout.flush()
+	if completion == total and operation == 'Porosity estimation ':
+		print("\nDONE!")
+
+
+def main_flow():
+
+	print("Starting Backend")
+
+	# Read in all images
+	images = []
+
+	for img_file in glob_file:
+		images.append(cv2.imread(img_file, 0))  # Turn the files into an array of images for easier access
+
+	for i in range(0, len(images)):
+		null, thres_img = cv2.threshold(images[i], 127, 255, cv2.THRESH_BINARY)
+		images[i] = despeckle(thres_img, despeckle_type[1])
+
+	parameters = crop_parameters(images)  # Get the universal parameters for future cropping operations
+	for i in range(0, len(images)):
+		images[i] = crop(images[i], parameters)
+
+	results = analyze(images)  # Results computes porosity/ surface area for each slice
+	porosities = results[0]
+	surface_area = results[1]
+
+	if voxel_size is not None:
+		volume = count_volume(surface_area, voxel_size)
+	else:
+		volume = "N/A"
+
+	# Ensure we do not get error taking average on empty array
+	if len(porosities) != 0:
+		porosity = np.average(np.array(porosities))
+	else:
+		porosity = 0
+
+	data_writer(worksheet, porosity, volume)
+	workbook.save(excel_file_name)
+
+	return 0
+
+
+# Analyze preforms porosity and surface area measurements on binary images. First each image gets a ROI shrinkwrap
+# which accurately delineates the sample boundary. The total pixels of this shrinkwrap are added a surface area holder
+# which is later multiplied by voxel size to estimate object volume. Likewise a ratio between bright pixels in the
+# shape outlined image vs original image is used to estimate porosity. These values are then returned to main.
+def analyze(images):
+	porosities = []
+	surface_area = 0
+
+	# Iterate through the images counting porosity and surface area for each slice
+	for i in range(0, len(images)):
+		progress_tracker(i + 1, len(images), 'Porosity estimation ')  # Shows user the programs progress
+		total_img_pixels = np.count_nonzero(images[i])
+		if total_img_pixels > 10:  # Exclude images that contain little to no white pixels
+			shape = shape_outliner(images[i])
+			total_shape_pixels = np.count_nonzero(shape)
+			porosities.append(por_calc(total_img_pixels, total_shape_pixels))
+			surface_area += total_shape_pixels
+
+	return porosities, surface_area
+
+
+# Given a excel sheet, data_writer writes the porosity previously computed to the excel sheet with a clean format
+def data_writer(ws, porosity, volume):
+	i = 1  # We loop to find empty cells before outputting the results
+	while ws.cell(row=i, column=1).value is not None and ws.cell(row=i + 2, column=1).value is not None:
+		i += 4
+	ws.cell(row=i, column=1).value = "Trial %d" % (i // 3)
+	ws.cell(row=i + 1, column=1).value = "Porosity:"
+	ws.cell(row=i + 1, column=2).value = porosity
+	ws.cell(row=i + 2, column=1).value = "Volume:"
+	ws.cell(row=i + 2, column=2).value = volume
+
+
+# Counts the volume for a CT scan (Multiply the surface area by voxel size) Returns volume in cm^3 (I think)
+# NOTE: Assumes no porosity in volume calculation, for 'real' volume, simply subtract volume*porosity from this volume
+def count_volume(total_voxels, voxel_size):
+	volume = total_voxels * voxel_size
+	return volume
