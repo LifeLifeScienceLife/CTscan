@@ -6,22 +6,31 @@ import numpy as np
 import openpyxl
 from openpyxl import load_workbook
 from skimage.morphology import remove_small_objects
+from multiprocessing.dummy import Pool as ThreadPool
 from scipy.ndimage import label
 
-test_image = None
-glob_file = None
+test_image = []  # Small Array of images
+threshold_test_images = []
+despeckle_test_images = []
+
+images = None
+voxel_size = None
+image_file_name = None
+
 workbook = None
 worksheet = None
 excel_file_name = None
-voxel_size = None
-image_file_name = None
+
 threshold_type = None
 despeckle_type = None
+
 width_inc = 1  # Represents the inc/decrement step in shape outliner (Increase to speed up runtime)
 
 
 def file_reader(file_location):
-	global test_image, glob_file
+	global test_image, images
+
+	test_image = []  # Reset global array value
 
 	if file_location is not None and len(file_location) > 1:
 
@@ -33,21 +42,33 @@ def file_reader(file_location):
 				break
 
 		file_location = file_path + "/*." + file_type
-		glob_file_local = (glob.glob(file_location))  # Read all files in a folder using glob
-		test_image_local = (cv2.imread(glob_file_local[len(glob_file_local)//2], 0))  # Try to read a file
+		glob_file = (glob.glob(file_location))  # Read all files in a folder using glob
+		test_image_local = (cv2.imread(glob_file[0], 0))  # Try to read a file
 
-		# Ensure user enters valid image file format
 		try:
 			cv2.resize(test_image_local, (1, 1))
-			glob_file = glob_file_local
-			test_image = test_image_local
+
+			# Multithread image read to speed up the process
+			pool = ThreadPool(4)
+			images = pool.map(multithread_file_read, glob_file)
+			pool.close()
+			pool.join()
+
+			# Get a subset of images for test images
+			for i in range(0, len(images), len(images) // 3):
+				test_image.append(images[i])
+
 		except cv2.error:
-			print("Bad Format")
+			print("Bad Format") #TODO ERROR MESSAGES FOR BAD FORMAT
 			return False
 
 		return True
 
 	return False
+
+
+def multithread_file_read(file):
+	return cv2.imread(file, 0)
 
 
 def old_excel_reader(excel_file):
@@ -87,50 +108,18 @@ def save_images_as(img_name):
 	return False
 
 
-def set_voxel_size(size):
-	global voxel_size
-
-	voxel_size = size
-
-
-def threshold_choice(user_choice):
-	global threshold_type
-	if threshold_type is None:
-		threshold_type = user_choice
-
-
 def threshold_selector(user_choice):
-	if user_choice == 1:
-		return otsu_threshold()
-	elif user_choice == 2:
-		return phanstalker_threshold()
-	elif user_choice == 3:
-		return global_threshold()
+	global threshold_test_images
 
+	threshold_test_images = []  # Reset global array
 
-# TODO IMPLEMENT THE OTHER THRESHOLDING TECHNIQUES
-def otsu_threshold(image=None):
-	if image is None:
-		image = test_image
-
-	null, thres_img = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-	return image, thres_img
-
-
-def phanstalker_threshold(image=None):
-	if image is None:
-		image = test_image
-
-	null, thres_img = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
-	return image, thres_img
-
-
-def global_threshold(image=None):
-	if image is None:
-		image = test_image
-
-	null, thres_img = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
-	return image, thres_img
+	for i in range(len(test_image)):
+		if user_choice == 1:
+			threshold_test_images.append(otsu_threshold(test_image[i]))
+		elif user_choice == 2:
+			threshold_test_images.append(phanstalker_threshold(test_image[i]))
+		elif user_choice == 3:
+			threshold_test_images.append(global_threshold(test_image[i]))
 
 
 def despeckle_choice(user_choice, area=None):
@@ -140,17 +129,38 @@ def despeckle_choice(user_choice, area=None):
 
 
 def despeckle_selector(user_choice, area):
-	if user_choice == 1 or 3:
-		return test_image, despeckle(test_image, area)
-	elif user_choice == 2:
-		return test_image, np.logical_xor(test_image, despeckle(test_image, area))
+	global despeckle_test_images
+
+	despeckle_test_images = []  # Reset global array
+
+	for i in range(len(test_image)):
+		if user_choice == 1 or user_choice == 3:
+			despeckle_test_images.append(less_than_despeckle(test_image[i], area))
+		elif user_choice == 2:
+			despeckle_test_images.append(greater_than_despeckle(test_image[i], area))
 
 
 ###################################BACK END ONLY BELOW#################################################################
 
+# TODO IMPLEMENT THE OTHER THRESHOLDING TECHNIQUES
+def otsu_threshold(image):
+	null, thres_img = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+	return thres_img
+
+
+def phanstalker_threshold(image):
+	null, thres_img = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
+	return thres_img
+
+
+def global_threshold(image):
+	null, thres_img = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
+	return thres_img
+
+
 # Despeckle images using a remove small objects function, size of objects is either user determined or found
 # automatically via random experimentation in auto crop parameters
-def despeckle(image, min_area):
+def less_than_despeckle(image, min_area):
 
 	min_area = int(round(float(min_area)))
 	grey_scale_conv_array = np.full((image.shape[0], image.shape[1]), 255)
@@ -161,6 +171,20 @@ def despeckle(image, min_area):
 
 	return grey_scale
 
+
+# TODO FIX THIS SHIT...
+def greater_than_despeckle(image, min_area):
+
+	min_area = int(round(float(min_area)))
+	grey_scale_conv_array = np.full((image.shape[0], image.shape[1]), 255)
+
+	bool_arr = np.array(image, bool)
+	despeckeled_img = remove_small_objects(bool_arr, min_area)
+
+	final_image = np.array(np.logical_xor(image, despeckeled_img), dtype=np.uint8)
+	grey_scale = np.array([a*b for a,b in zip(final_image, grey_scale_conv_array)], dtype=np.uint8)
+
+	return grey_scale
 
 # Given a set of images, crop parameters estimates an appropriate crop boundary. To do this, we first consider x images
 # with the highest bright pixel count. We assume there is a correlation between # of bright pixels and the area of the
@@ -285,12 +309,6 @@ def progress_tracker(completion, total, operation):
 def main_flow():
 
 	print("Starting Backend")
-
-	# Read in all images
-	images = []
-
-	for img_file in glob_file:
-		images.append(cv2.imread(img_file, 0))  # Turn the files into an array of images for easier access
 
 	for i in range(0, len(images)):
 		null, thres_img = cv2.threshold(images[i], 127, 255, cv2.THRESH_BINARY)

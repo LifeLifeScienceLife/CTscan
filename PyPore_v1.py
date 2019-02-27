@@ -134,6 +134,8 @@ def file_reader():
 			continue
 		break
 
+	print("Test")
+
 	return images
 
 

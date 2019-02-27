@@ -1,12 +1,13 @@
 from tkinter import *
 from tkinter import filedialog
+from tkinter.ttk import Progressbar
 from PIL import ImageTk, Image
 import PyPore_New_GUI
 import cv2
 import sys
+import threading
 
-skip_threshold = False
-skip_despeckle = False
+crop = False
 green = "#53c653"
 
 
@@ -22,8 +23,6 @@ class Window(Frame):
 		master.iconbitmap('PyPore.ico')
 		master.resizable(width=False, height=False)
 		master.columnconfigure(0, weight=1)
-
-		# Trying to make a menu
 
 		main_menu = Menu(master)
 		master.config(menu=main_menu)
@@ -65,7 +64,7 @@ class ExtendedPopupWindow(Frame):
 
 		master.title("PyPore")
 		master.iconbitmap('PyPore.ico')
-		master.geometry("610x800")
+		master.geometry("558x923+0+0")
 		master.resizable(width=False, height=False)
 		master.grab_set()
 
@@ -93,12 +92,26 @@ class IntroWindow(Window):
 		img.image = tk_img
 		img.grid(row=0, column=0, rowspan=3)
 
+		self.progress = Progressbar(self, orient=HORIZONTAL, length=345, mode='determinate')
+		self.label = Label(self, text="Loading in Images")
+
 		self.columnconfigure(1, weight=1)
 
 	def img_browse(self):
-		if PyPore_New_GUI.file_reader(filedialog.askopenfilename()):
-			self.add_excel.config(bg=green, state='normal')
-			self.add_files.config(bg="SystemButtonFace")
+		file_location = filedialog.askopenfilename()
+
+		self.label.grid(row=4, column=0, sticky=W, padx=100)
+		self.progress.grid(row=4, column=1, sticky=E)
+		self.progress.start()
+
+		def load_images():
+			if PyPore_New_GUI.file_reader(file_location):
+				self.add_excel.config(bg=green, state='normal')
+				self.add_files.config(bg="SystemButtonFace")
+				self.label.grid_forget()
+				self.progress.grid_forget()
+
+		threading.Thread(target=load_images).start()
 
 	def excel_browse(self):
 		ExcelPopup(Toplevel(), self)
@@ -108,13 +121,7 @@ class IntroWindow(Window):
 
 	def transition(self):
 		self.destroy()
-		if skip_threshold and skip_despeckle:
-			self.parent.destroy()
-			call_backend()
-		elif skip_threshold:
-			DespeckleWindow(self.parent)
-		else:
-			ThresholdWindow(self.parent)
+		ThresholdWindow(self.parent)
 
 
 class ExcelPopup(PopupWindow):
@@ -177,33 +184,27 @@ class AddInfoPopup(PopupWindow):
 		Radiobutton(self, text="No", variable=self.var2, value=4, command=lambda: Empty_Label_2.lift()).grid(row=4, column=1)
 
 		self.var3 = IntVar(0)
-		Label(self, text="Are images in black\white (skip thresholding)?").grid(row=6, column=0, columnspan=2)
+		Label(self, text="Would you like to crop the images?").grid(row=6, column=0, columnspan=2)
 		Radiobutton(self, text="Yes", variable=self.var3, value=5).grid(row=7, column=0)
 		Radiobutton(self, text="No", variable=self.var3, value=6).grid(row=7, column=1)
-
-		self.var4 = IntVar(0)
-		Label(self, text="Are images denoised (skip despeckeling)?").grid(row=8, column=0, columnspan=2)
-		Radiobutton(self, text="Yes", variable=self.var4, value=7).grid(row=9, column=0)
-		Radiobutton(self, text="No", variable=self.var4, value=8).grid(row=9, column=1)
 
 		Button(self, text="Continue", command=self.submit_info).grid(row=10, column=0, columnspan=2)
 
 	def submit_info(self):
-		global skip_despeckle, skip_threshold
+		global crop
 
-		if 0 in [self.var1.get(), self.var2.get(), self.var3.get(), self.var4.get()]:
+		if 0 in [self.var1.get(), self.var2.get(), self.var3.get()]:
 			popupmsg("Please fill out all the fields")
 		else:
 			if self.var1.get() == 1:
 				if validate_input(self.Voxel_Entry.get()):
-					PyPore_New_GUI.set_voxel_size(self.Voxel_Entry.get())
+					PyPore_New_GUI.voxel_size = self.Voxel_Entry.get()
 				else:
 					popupmsg("Please enter a number for pixel size")
 					exit()
+			# TODO SAVE IMAGES
 			if self.var3.get() == 5:
-				skip_threshold = True
-			if self.var4.get() == 7:
-				skip_despeckle = True
+				crop = True
 			self.parent.destroy()
 			IntroWindow.transition(self.below_window)
 
@@ -240,11 +241,7 @@ class ThresholdWindow(Window):
 
 	def transition(self):
 		self.destroy()
-		if not skip_despeckle:
-			DespeckleWindow(self.parent)
-		else:
-			self.parent.destroy()
-			call_backend()
+		DespeckleWindow(self.parent)
 
 
 class DespeckleWindow(Window):
@@ -272,8 +269,13 @@ class DespeckleWindow(Window):
 		self.columnconfigure(1, weight=1)
 
 	def transition(self):
-		self.parent.destroy()
-		call_backend()
+		if crop:
+			self.destroy()
+			CropWindow(self.parent)
+		else:
+			print("Test")
+			self.parent.destroy()
+			call_backend()
 
 
 class DespecklePopup(PopupWindow):
@@ -300,6 +302,33 @@ class DespecklePopup(PopupWindow):
 			popupmsg("Please enter a valid area (Integer)")
 			exit()
 
+class CropWindow(Window):
+
+	def __init__(self, parent):
+		super().__init__(parent)
+		self.parent = parent
+
+		self.grid(sticky=(E + W + N + S))
+
+		self.Otsu = Button(self, text="Preform Cropping", command=lambda: Image_Comparison(Toplevel(), 1, self, "Thresholding"), padx=122)
+		self.Otsu.grid(row=0, column=1, sticky=(E + W + N + S))
+
+		self.Gmeans = Button(self, text="", padx=122)
+		self.Gmeans.grid(row=1, column=1, sticky=(E + W + N + S))
+
+		self.Phan = Button(self, text="Continue", padx=122)
+		self.Phan.grid(row=2, column=1, sticky=(E + W + N + S))
+
+		tk_img = ImageTk.PhotoImage(file="Logo.gif")
+		img = Label(self, image=tk_img, width=350, height=350)
+		img.image = tk_img
+		img.grid(row=0, column=0, rowspan=3)
+
+		self.columnconfigure(1, weight=1)
+
+	def transition(self):
+		self.destroy()
+		DespeckleWindow(self.parent)
 
 class Image_Comparison(ExtendedPopupWindow):
 	def __init__(self, parent, choice, below_window, operation, area=10):
@@ -315,38 +344,46 @@ class Image_Comparison(ExtendedPopupWindow):
 		Label(self, text="   New   ").grid(row=0, column=1)
 
 		if self.operation == "Thresholding":
-			images = PyPore_New_GUI.threshold_selector(choice)
+			PyPore_New_GUI.threshold_selector(choice)
+			OG_images = PyPore_New_GUI.test_image
+			New_images = PyPore_New_GUI.threshold_test_images
 		else:
-			images = PyPore_New_GUI.despeckle_selector(choice, area)
+			PyPore_New_GUI.despeckle_selector(choice, area)
+			OG_images = PyPore_New_GUI.threshold_test_images
+			New_images = PyPore_New_GUI.despeckle_test_images
 
-		OG = images[0]
-		OG = cv2.resize(OG, (300, 300))
-		OG = ImageTk.PhotoImage(Image.fromarray(OG))
-		img1 = Label(self, image=OG, width=300, height=300)
-		img1.image = OG
-		img1.grid(row=1, column=0, rowspan=3)
+		j = 1
+		for i in range(0, 3):
 
-		New = images[1]
-		New = cv2.resize(New, (300, 300))
-		New = ImageTk.PhotoImage(Image.fromarray(New))
-		img2 = Label(self, image=New, width=300, height=300)
-		img2.image = New
-		img2.grid(row=1, column=1, rowspan=3)
+			OG = OG_images[i]
+			OG = cv2.resize(OG, (275, 275))
+			OG = ImageTk.PhotoImage(Image.fromarray(OG))
+			img1 = Label(self, image=OG, width=275, height=275)
+			img1.image = OG
+			img1.grid(row=j, column=0, rowspan=3)
 
-		Label(self, text="Are you happy with this %s: " % operation).grid(row=5, column=0, columnspan=2)
-		Button(self, text="Yes", command=self.pass_values).grid(row=6, column=0)
-		Button(self, text="no", command=self.parent.destroy).grid(row=6, column=1)
+			New = New_images[i]
+			New = cv2.resize(New, (275, 275))
+			New = ImageTk.PhotoImage(Image.fromarray(New))
+			img2 = Label(self, image=New, width=275, height=275)
+			img2.image = New
+			img2.grid(row=j, column=1, rowspan=3)
+
+			j += 4
+
+		Label(self, text="Are you happy with this %s: " % operation).grid(row=14, column=0, columnspan=2)
+		Button(self, text="Yes", command=self.pass_values).grid(row=15, column=0, sticky=(E, W))
+		Button(self, text="No", command=self.parent.destroy).grid(row=15, column=1, sticky=(E, W))
 
 	def pass_values(self):
 		if self.operation == "Thresholding":
 			ThresholdWindow.transition(self.below_window)
-			PyPore_New_GUI.threshold_choice(self.choice)
+			PyPore_New_GUI.threshold_type = self.choice
 			self.parent.destroy()
 		else:
-			PyPore_New_GUI.despeckle_choice(self.choice, self.area)
+			PyPore_New_GUI.despeckle_type(self.choice, self.area)
 			self.parent.destroy()
 			DespeckleWindow.transition(self.below_window)
-
 
 
 # FROM https://pythonprogramming.net/tkinter-popup-message-window/
