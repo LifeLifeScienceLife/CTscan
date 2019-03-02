@@ -1,3 +1,5 @@
+# The newest and most fully version of feature of PyPore with no GUI linkage.
+
 import cv2
 import glob
 import random

@@ -12,6 +12,7 @@ from scipy.ndimage import label
 test_image = []  # Small Array of images
 threshold_test_images = []
 despeckle_test_images = []
+cropped_test_images = []
 
 images = None
 voxel_size = None
@@ -23,6 +24,10 @@ excel_file_name = None
 
 threshold_type = None
 despeckle_type = None
+
+perform_crop = None
+cparams = None
+scale = None
 
 width_inc = 1  # Represents the inc/decrement step in shape outliner (Increase to speed up runtime)
 
@@ -46,11 +51,11 @@ def file_reader(file_location):
 		test_image_local = (cv2.imread(glob_file[0], 0))  # Try to read a file
 
 		try:
-			cv2.resize(test_image_local, (1, 1))
+			cv2.resize(test_image_local, (1, 1)) # Test that we have an image file
 
-			# Multithread image read to speed up the process
+			# Multi Thread image read to speed up the process
 			pool = ThreadPool(4)
-			images = pool.map(multithread_file_read, glob_file)
+			images = pool.map(multi_thread_file_read, glob_file)
 			pool.close()
 			pool.join()
 
@@ -67,7 +72,7 @@ def file_reader(file_location):
 	return False
 
 
-def multithread_file_read(file):
+def multi_thread_file_read(file):
 	return cv2.imread(file, 0)
 
 
@@ -140,6 +145,26 @@ def despeckle_selector(user_choice, area):
 			despeckle_test_images.append(greater_than_despeckle(test_image[i], area))
 
 
+def crop_selector(user_choice):
+	global perform_crop, cparams
+
+	if user_choice:
+		perform_crop = True
+		cparams = crop_parameters(images)
+	else:
+		perform_crop = False
+
+
+def crop_selector2(user_choice):
+	global cropped_test_images, scale
+
+	cropped_test_images = []  # Reset global array
+	scale = user_choice
+
+	for i in range(len(test_image)):
+		cropped_test_images.append(crop(test_image[i], user_choice))
+
+
 ###################################BACK END ONLY BELOW#################################################################
 
 # TODO IMPLEMENT THE OTHER THRESHOLDING TECHNIQUES
@@ -172,7 +197,6 @@ def less_than_despeckle(image, min_area):
 	return grey_scale
 
 
-# TODO FIX THIS SHIT...
 def greater_than_despeckle(image, min_area):
 
 	min_area = int(round(float(min_area)))
@@ -185,6 +209,7 @@ def greater_than_despeckle(image, min_area):
 	grey_scale = np.array([a*b for a,b in zip(final_image, grey_scale_conv_array)], dtype=np.uint8)
 
 	return grey_scale
+
 
 # Given a set of images, crop parameters estimates an appropriate crop boundary. To do this, we first consider x images
 # with the highest bright pixel count. We assume there is a correlation between # of bright pixels and the area of the
@@ -247,8 +272,10 @@ def left_right_shutter_close(image, width_index, height, increment):
 
 
 # Given an image and a list of parameters, crops the image to a smaller dimension for faster future processing
-def crop(img, dimensions):
-	scale = 1
+def crop(img, scale=1):
+
+	dimensions = cparams
+
 	crop_img = img[int(dimensions[0] // scale):img.shape[0] - int(dimensions[1] // scale),
 	int(dimensions[2] // scale):img.shape[1] - int(dimensions[3] // scale)]
 
@@ -312,11 +339,10 @@ def main_flow():
 
 	for i in range(0, len(images)):
 		null, thres_img = cv2.threshold(images[i], 127, 255, cv2.THRESH_BINARY)
-		images[i] = despeckle(thres_img, despeckle_type[1])
+		images[i] = less_than_despeckle(thres_img, despeckle_type[1])
 
-	parameters = crop_parameters(images)  # Get the universal parameters for future cropping operations
 	for i in range(0, len(images)):
-		images[i] = crop(images[i], parameters)
+		images[i] = crop(images[i], scale)
 
 	results = analyze(images)  # Results computes porosity/ surface area for each slice
 	porosities = results[0]
