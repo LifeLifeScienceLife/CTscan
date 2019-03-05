@@ -16,7 +16,7 @@ cropped_test_images = []
 
 images = None
 voxel_size = None
-image_file_name = None
+output_image_file_name = None
 
 workbook = None
 worksheet = None
@@ -24,6 +24,7 @@ excel_file_name = None
 
 threshold_type = None
 despeckle_type = None
+global_means_thresh_value = 127
 
 perform_crop = None
 cparams = None
@@ -104,10 +105,11 @@ def new_excel_reader(excel_file):
 
 
 def save_images_as(img_name):
-	global image_file_name
+	global output_image_file_name
 
+	print(img_name)
 	if img_name is not None and len(img_name) > 1:
-		image_file_name = img_name
+		output_image_file_name = img_name
 		return True
 
 	return False
@@ -139,10 +141,12 @@ def despeckle_selector(user_choice, area):
 	despeckle_test_images = []  # Reset global array
 
 	for i in range(len(test_image)):
-		if user_choice == 1 or user_choice == 3:
+		if user_choice == 1:
 			despeckle_test_images.append(less_than_despeckle(test_image[i], area))
 		elif user_choice == 2:
 			despeckle_test_images.append(greater_than_despeckle(test_image[i], area))
+		elif user_choice == 3:
+			despeckle_test_images.append(less_than_despeckle(test_image[i], area))
 
 
 def crop_selector(user_choice):
@@ -162,7 +166,7 @@ def crop_selector2(user_choice):
 	scale = user_choice
 
 	for i in range(len(test_image)):
-		cropped_test_images.append(crop(test_image[i], user_choice))
+		cropped_test_images.append(crop(despeckle_test_images[i], user_choice))
 
 
 ###################################BACK END ONLY BELOW#################################################################
@@ -174,7 +178,7 @@ def otsu_threshold(image):
 
 
 def phanstalker_threshold(image):
-	null, thres_img = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
+	null, thres_img = cv2.threshold(image, global_means_thresh_value, 255, cv2.THRESH_BINARY)
 	return thres_img
 
 
@@ -184,7 +188,7 @@ def global_threshold(image):
 
 
 # Despeckle images using a remove small objects function, size of objects is either user determined or found
-# automatically via random experimentation in auto crop parameters
+# automatically via random experimentation in auto despeckle parameters
 def less_than_despeckle(image, min_area):
 
 	min_area = int(round(float(min_area)))
@@ -209,6 +213,31 @@ def greater_than_despeckle(image, min_area):
 	grey_scale = np.array([a*b for a,b in zip(final_image, grey_scale_conv_array)], dtype=np.uint8)
 
 	return grey_scale
+
+
+# Auto despeckle is designed to work with single object, low porosity samples (i.e salt scans). It works by
+# iteratively increasing the min object despeckeled until only one object remains. We repeat this process on random
+# images and take the average value after x trials.
+def auto_despeckle_parameters():
+	images_considered = 10
+	min_area_array = np.zeros([images_considered])
+
+	for i in range(0, images_considered):
+		random_img = images[random.randrange(len(images))]  # Select a random image from the stack
+		bool_arr = np.array(random_img, bool)  # Convert it into a boolean array (needed for small objects method)
+
+		min_obj_size = 0
+		num_features = -1
+
+		# Loop increasing min object size until only one object is left in the image
+		while num_features != 1 and min_obj_size < 200:
+			min_obj_size += 10
+			filtered_img = remove_small_objects(bool_arr, min_obj_size)
+			null, num_features = label(filtered_img)
+
+		min_area_array[i] = min_obj_size
+
+	return int(np.average(min_area_array))
 
 
 # Given a set of images, crop parameters estimates an appropriate crop boundary. To do this, we first consider x images
@@ -362,7 +391,9 @@ def main_flow():
 	data_writer(worksheet, porosity, volume)
 	workbook.save(excel_file_name)
 
-	return 0
+	print(excel_file_name)
+
+	sys.exit()
 
 
 # Analyze preforms porosity and surface area measurements on binary images. First each image gets a ROI shrinkwrap

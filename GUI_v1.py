@@ -6,6 +6,8 @@ import PyPore_New_GUI as backend
 import cv2
 import sys
 import threading
+from matplotlib import pyplot as plt
+
 
 crop = False
 green = "#53c653"
@@ -53,32 +55,17 @@ class Window(Frame):
 		img.image = tk_img
 		img.grid(row=0, column=0, rowspan=3)
 
-		master.progress = Progressbar(self, orient=HORIZONTAL, length=345, mode='determinate')
-		master.label = Label(self, text="Loading in Images")
+		self.master.progress = Progressbar(self, orient=HORIZONTAL, length=345, mode='determinate')
+		self.master.label = Label(self, text="Loading in Images")
 
-		self.columnconfigure(1, weight=1)
+	def start_progress_bar(self):
+		self.master.label.grid(row=4, column=0, sticky=W, padx=100)
+		self.master.progress.grid(row=4, column=1, sticky=E)
+		self.master.progress.start()
 
 	def restart(self):
 		self.destroy()
 		IntroWindow(self.master)
-
-	## OVERWRITE IN SUBCLASSES
-	def undo(self):
-		pass
-
-
-class PopupWindow(Frame):
-
-	def __init__(self, master=None):
-		Frame.__init__(self, master)
-		self.master = master
-
-		master.title("PyPore")
-		master.iconbitmap('PyPore.ico')
-		master.geometry("350x350")
-		master.resizable(width=False, height=False)
-		master.columnconfigure(0, weight=1)
-		master.grab_set()
 
 
 class ExtendedPopupWindow(Frame):
@@ -103,14 +90,12 @@ class IntroWindow(Window):
 		parent.button1.config(text="Add Images", bg=green, command=self.img_browse)
 		parent.button2.config(state='disable', text="Add Output Excel File", command=self.excel_browse)
 		parent.button3.config(state='disable', text="Add Additional Information", command=self.add_info, padx=75)
+		# parent.button3.config(text="Add Additional Information", command=self.add_info, padx=75)
 
 	# Read in image files using tkinter filedialog. Uses threading to display loading bar while reading in images.
 	def img_browse(self):
 		file_location = filedialog.askopenfilename()
-
-		self.parent.label.grid(row=4, column=0, sticky=W, padx=100)
-		self.parent.progress.grid(row=4, column=1, sticky=E)
-		self.parent.progress.start()
+		Window.start_progress_bar(self)
 
 		def load_images():
 			if backend.file_reader(file_location):
@@ -125,13 +110,14 @@ class IntroWindow(Window):
 
 	# Handle the creation or retrieval of an excel file to output the result of backend computation.
 	def excel_browse(self):
-		ExcelPopup(Toplevel(), self.parent)  # From Excel Handler, I need to change a button (Pass Master Window)
+		f1 = ExcelPopup(self, self.parent)  # From excel_browse, I need to change a button (Pass Master Window)
+		f1.grid(row=0, column=0, rowspan=3, sticky=(E + W + N + S))
 
 	# Gives the user the choice to compute volume (And input a voxel size), save processed images and toggle cropping.
 	def add_info(self):
-		AddInfoPopup(Toplevel(), self)  # From Add Info, I need to call a function in IntroWindow, that is what I pass.
+		f1 = AddInfoPopup(self, self.parent)
+		f1.grid(row=0, column=0, rowspan=3, sticky=(E + W + N + S))
 
-	# Normally undo goes to the previous window; because this is the first window we just reset the program.
 	def undo(self):
 		self.destroy()
 		IntroWindow(self.master)
@@ -141,17 +127,19 @@ class IntroWindow(Window):
 		ThresholdWindow(self.parent)
 
 
-class ExcelPopup(PopupWindow):
+class ExcelPopup(Frame):
 	def __init__(self, parent, bottom_window):
 		super().__init__(parent)
 		self.parent = parent
 		self.bottom_window = bottom_window
 		self.grid()
 
+		self.config(highlightbackground=green, highlightcolor=green, highlightthickness=2)
+
 		var = IntVar()
-		Label(self, text="Would you like to use an existing excel file?").grid(row=0, column=0, columnspan=2)
-		Radiobutton(self, text="Yes", variable=var, value=1, command=lambda: self.excel_selector(True)).grid(row=1, column=0)
-		Radiobutton(self, text="No", variable=var, value=2, command=lambda: self.excel_selector(False)).grid(row=1, column=1)
+		Label(self, text="Would you like to use an existing excel file?").grid(row=0, column=0, columnspan=2, padx=25, pady=(130, 0))
+		Checkbutton(self, text="Yes", variable=var, onvalue=1, command=lambda: self.excel_selector(True)).grid(row=1, column=0)
+		Checkbutton(self, text="No", variable=var, onvalue=2, command=lambda: self.excel_selector(False)).grid(row=1, column=1)
 
 	# Make the appropriate button appear based upon users choice.
 	def excel_selector(self, new_sheet):
@@ -172,69 +160,106 @@ class ExcelPopup(PopupWindow):
 	def transition(self):
 		self.bottom_window.button3.config(state='normal', bg=green)
 		self.bottom_window.button2.config(bg="SystemButtonFace")
-		self.parent.destroy()
+		self.destroy()
 
 
-class AddInfoPopup(PopupWindow):
-	def __init__(self, parent, below_window):
+class AddInfoPopup(Frame):
+	def __init__(self, parent, root_window):
 		super().__init__(parent)
-
+		self.root_window = root_window
 		self.parent = parent
-		self.below_window = below_window
 		self.grid()
 
+		self.config(highlightbackground=green, highlightcolor=green, highlightthickness=2)
+
+		self.img_file_path = None
+
+		# Measure Volume Option
 		self.var1 = IntVar(0)
-		Label(self, text="Would you like to measure volume?").grid(row=0, column=0, columnspan=2)
-		Radiobutton(self, text="Yes", variable=self.var1, value=1, command=lambda: Empty_Label.lower()).grid(row=1, column=0)
-		Radiobutton(self, text="No", variable=self.var1, value=2, command=lambda: Empty_Label.lift()).grid(row=1, column=1)
+		Label(self, text="Would you like to measure volume?").grid(row=0, column=0, columnspan=2, pady=(25, 0))
+		Checkbutton(self, text="Yes", variable=self.var1, onvalue=1, command=lambda: Empty_Label.lower()).grid(row=1, column=0)
+		Checkbutton(self, text="No", variable=self.var1, onvalue=2, command=lambda: Empty_Label.lift()).grid(row=1, column=1)
 
 		Label(self, text="Pixel Resolution in um:").grid(row=2, column=0)
 		self.Voxel_Entry = Entry(self)
 		self.Voxel_Entry.grid(row=2, column=1)
 
+		# Save Images Option
+		self.var2 = IntVar(0)
+		Label(self, text="Would you like to save the new images?").grid(row=3, column=0, columnspan=2, padx=40)
+		self.save_img_yes = Checkbutton(self, text="Yes", variable=self.var2, onvalue=3,  command=lambda: self.Empty_Label_2.lower())
+		self.save_img_yes.grid(row=4, column=0)
+		self.save_img_no = Checkbutton(self, text="No", variable=self.var2, onvalue=4, command=lambda: self.Empty_Label_2.lift())
+		self.save_img_no.grid(row=4, column=1)
+
 		Empty_Label = Label(self, text="")
 		Empty_Label.grid(row=2, column=0, columnspan=2, sticky=(E+W))
 
 		Button(self, text="Save Images As", command=self.save_images).grid(row=5, column=0, columnspan=2)
-		Empty_Label_2 = Label(self, text="")
-		Empty_Label_2.grid(row=5, column=0, columnspan=2, ipady=10, sticky=(E+W))
+		self.Empty_Label_2 = Label(self, text="")
+		self.Empty_Label_2.grid(row=5, column=0, columnspan=2, ipady=10, sticky=(E+W))
 
-		self.var2 = IntVar(0)
-		Label(self, text="Would you like to save the new images?").grid(row=3, column=0, columnspan=2)
-		Radiobutton(self, text="Yes", variable=self.var2, value=3, command=lambda: Empty_Label_2.lower()).grid(row=4, column=0)
-		Radiobutton(self, text="No", variable=self.var2, value=4, command=lambda: Empty_Label_2.lift()).grid(row=4, column=1)
-
+		# Crop Images Option
 		self.var3 = IntVar(0)
 		Label(self, text="Would you like to crop the images?").grid(row=6, column=0, columnspan=2)
-		Radiobutton(self, text="Yes", variable=self.var3, value=5).grid(row=7, column=0)
-		Radiobutton(self, text="No", variable=self.var3, value=6).grid(row=7, column=1)
+		Checkbutton(self, text="Yes", variable=self.var3, onvalue=5).grid(row=7, column=0)
+		Checkbutton(self, text="No", variable=self.var3, onvalue=6).grid(row=7, column=1)
 
 		Button(self, text="Continue", command=self.submit_info).grid(row=10, column=0, columnspan=2)
 
 	def submit_info(self):
-		global crop
+
+		valid_voxel = True
+		valid_image = True
 
 		if 0 in [self.var1.get(), self.var2.get(), self.var3.get()]:
 			popupmsg("Please fill out all the fields")
 		else:
+			# Ensure voxel size is valid
 			if self.var1.get() == 1:
 				if validate_input(self.Voxel_Entry.get()):
 					backend.voxel_size = self.Voxel_Entry.get()
 				else:
+					valid_voxel = False
 					popupmsg("Please enter a number for pixel size")
-					exit()
-			# TODO SAVE IMAGES
-			if self.var3.get() == 5:
-				crop = True
-				backend.crop_selector(True)
-			self.parent.destroy()
-			IntroWindow.transition(self.below_window)
+
+			# Ensures user selects a valid image file name
+			if self.var2.get() == 3:
+				if self.img_file_path is None:
+					popupmsg("Please Input A Valid Filename")
+					valid_image = False
+
+			def set_crop_parameters():
+				global crop
+
+				if self.var3.get() == 5:
+					crop = True
+					backend.crop_selector(True)
+
+				self.root_window.label.grid_forget()
+				self.root_window.progress.grid_forget()
+
+				self.destroy()
+				IntroWindow.transition(self.parent)
+
+			if valid_voxel and valid_image:
+				self.root_window.label.config(text="Submitting Information")
+				Window.start_progress_bar(self.parent)
+				threading.Thread(target=set_crop_parameters).start()
 
 	def save_images(self):
-		img_file_path = (filedialog.asksaveasfilename(filetypes=[(".jpg", "*.jpg")]))
+
+		mask = [
+			("JPEG", "*.jpg"),
+			("BMP", "*.bmp"),
+			("TIFF", "*.tif"),
+			("PNG", "*.png")]
+
+		img_file_path = (filedialog.asksaveasfilename(defaultextension=".jpg", filetypes=mask, confirmoverwrite=False))
 		if not backend.save_images_as(img_file_path):
 			popupmsg("Please Input A Valid Filename")
-			self.var3.set(0)
+		else:
+			self.img_file_path = img_file_path
 
 
 class ThresholdWindow(Window):
@@ -244,12 +269,38 @@ class ThresholdWindow(Window):
 		self.parent = parent
 
 		parent.button1.config(text="Otsu", command=lambda: Image_Comparison(Toplevel(), 1, self, "Thresholding"))
-		parent.button2.config(text="Global Means", command=lambda: Image_Comparison(Toplevel(), 2, self, "Thresholding"), padx=122)
+		parent.button2.config(text="Global Means", command=self.global_means_thresh_popup, padx=122)
 		parent.button3.config(text="Phansalkar", command=lambda: Image_Comparison(Toplevel(), 3, self, "Thresholding"))
+
+	def global_means_thresh_popup(self):
+
+		f1 = Frame(self)
+		f1.grid(row=0, column=0, rowspan=3, sticky=(E + W + N + S))
+		f1.config(highlightbackground=green, highlightcolor=green, highlightthickness=2)
+
+		plt.hist(backend.test_image[1].ravel(), 256, [0, 256])
+		plt.savefig("Histogram.png")
+		New = cv2.imread("Histogram.png", 1)
+		New = cv2.resize(New, (350, 275))
+		New = ImageTk.PhotoImage(Image.fromarray(New))
+		img = Label(f1, image=New, width=350, height=275)
+		img.image = New
+		img.grid(row=0, column=0)
+
+		thresh_scale = Scale(f1, from_=0, to=255, orient=HORIZONTAL, length=270)
+		thresh_scale.grid(row=1, column=0)
+		Label(f1, text="Select a threshold value:").grid(row=2, column=0, sticky=(E + W + N + S), padx=10)
+
+		submit = Button(f1, text="submit", command=lambda: Image_Comparison(Toplevel(), 2, self, "Thresholding", thresh_scale.get()))
+		submit.grid(row=3, column=0)
 
 	def transition(self):
 		self.destroy()
 		DespeckleWindow(self.parent)
+
+	def undo(self):
+		self.destroy()
+		IntroWindow(self.master)
 
 
 class DespeckleWindow(Window):
@@ -258,9 +309,28 @@ class DespeckleWindow(Window):
 		super().__init__(parent)
 		self.parent = parent
 
-		parent.button1.config(text="Remove white specks less than: X", command=lambda: DespecklePopup(Toplevel(), 1))
-		parent.button2.config(text="Remove white specks greater than: X", command=lambda: DespecklePopup(Toplevel(), 2), padx=45)
-		parent.button3.config(text="Auto Despeckle", command=lambda: Image_Comparison(Toplevel(), 3, self, "Despeckeling", 10))
+		parent.button1.config(text="Remove white specks less than: X", command=lambda: self.create_pop_up(1))
+		parent.button2.config(text="Remove white specks greater than: X", command=lambda: self.create_pop_up(2), padx=45)
+		parent.button3.config(text="Auto Despeckle", command=self.auto_despeckle_threading)
+
+	def auto_despeckle_threading(self):
+
+		Window.start_progress_bar(self)
+		self.parent.label.config(text="Auto Despeckeling")
+
+		def thread():
+			area = backend.auto_despeckle_parameters()
+			self.parent.label.grid_forget()
+			self.parent.progress.grid_forget()
+
+			Image_Comparison(Toplevel(), 3, self, "Despeckeling", area)
+
+		# This threading allows us to see the status bar while images are loading, keeps system status visible
+		threading.Thread(target=thread).start()
+
+	def create_pop_up(self, choice):
+		f1 = DespecklePopup(self, choice)
+		f1.grid(row=0, column=0, rowspan=3, sticky=(E + W + N + S))
 
 	def transition(self):
 		if crop:
@@ -270,30 +340,40 @@ class DespeckleWindow(Window):
 			self.parent.destroy()
 			call_backend()
 
+	def undo(self):
+		self.destroy()
+		ThresholdWindow(self.master)
 
-class DespecklePopup(PopupWindow):
+
+class DespecklePopup(Frame):
 	def __init__(self, parent, choice):
 		super().__init__(parent)
 		self.choice = choice
 		self.parent = parent
 		self.grid()
 
+		self.config(highlightbackground=green, highlightcolor=green, highlightthickness=2)
+
 		if choice == 1:
-			Label(self, text="Remove white specks less than:").grid(row=0, column=0)
+			Label(self, text="Remove white specks less than:").grid(row=0, column=0, padx=15, pady=(130, 0))
 		else:
-			Label(self, text="Remove white specks greater than:").grid(row=0, column=0)
+			Label(self, text="Remove white specks greater than:").grid(row=0, column=0, padx=10, pady=(130, 0))
 
 		Button(self, text="Submit", command=self.transition).grid(row=1, column=0, columnspan=2)
 
-		self.Area_Entry = Entry(self)
-		self.Area_Entry.grid(row=0, column=1)
+		self.Area_Entry = Entry(self, width=10)
+		self.Area_Entry.grid(row=0, column=1, pady=(130, 0))
 
 	def transition(self):
 		if validate_input(self.Area_Entry.get()):
-			Image_Comparison(Toplevel(), self.choice, self, "Despeckeling", self.Area_Entry.get())
+			Image_Comparison(Toplevel(), self.choice, self.parent, "Despeckeling", self.Area_Entry.get())
 		else:
 			popupmsg("Please enter a valid area (Integer)")
 			exit()
+
+	def undo(self):
+		self.destroy()
+		ThresholdWindow(self.master)
 
 
 class CropWindow(Window):
@@ -306,7 +386,7 @@ class CropWindow(Window):
 
 		parent.button1.config(text="Preform Cropping", command=lambda: Image_Comparison(Toplevel(), 1, self, "Cropping", self.convert_scale(self.crop_scale.get())))
 		parent.button2.grid_forget()
-		parent.button3.config(text="Start Calculations", state='disable', padx=110)
+		parent.button3.config(text="Start Calculations", state='disable', padx=110, command=self.transition)
 
 		f1 = Frame(self)
 		f1.grid(row=1, column=1)
@@ -320,32 +400,42 @@ class CropWindow(Window):
 		return (((value - 1) * (2 - 1)) / (100 - 1)) + 1
 
 	def enable_button_3(self):
-		self.parent.button3.config(state='enable', bg=green)
+		self.parent.button3.config(state='normal', bg=green)
+
+	def transition(self):
+		self.parent.destroy()
+		call_backend()
+
+	def undo(self):
+		self.destroy()
+		DespeckleWindow(self.master)
 
 
 class Image_Comparison(ExtendedPopupWindow):
-	def __init__(self, parent, choice, below_window, operation, area=10):
+	def __init__(self, parent, choice, below_window, operation, secondary_value=None):
 		super().__init__(parent)
 		self.parent = parent
 		self.below_window = below_window
 		self.operation = operation
 		self.choice = choice
-		self.area = area
+		self.secondary_value = secondary_value
 		self.grid()
 
 		Label(self, text="Original").grid(row=0, column=0)
 		Label(self, text="   New   ").grid(row=0, column=1)
 
 		if self.operation == "Thresholding":
+			if choice == 2:
+				backend.global_means_thresh_value = secondary_value  # Set the global means threshold value
 			backend.threshold_selector(choice)
 			OG_images = backend.test_image
 			New_images = backend.threshold_test_images
 		elif self.operation == "Despeckeling":
-			backend.despeckle_selector(choice, area)
+			backend.despeckle_selector(choice, secondary_value)
 			OG_images = backend.threshold_test_images
 			New_images = backend.despeckle_test_images
 		else:
-			backend.crop_selector2(area)
+			backend.crop_selector2(secondary_value)
 			OG_images = backend.despeckle_test_images
 			New_images = backend.cropped_test_images
 
@@ -378,7 +468,7 @@ class Image_Comparison(ExtendedPopupWindow):
 			backend.threshold_type = self.choice
 			self.parent.destroy()
 		elif self.operation == "Despeckeling":
-			backend.despeckle_choice(self.choice, self.area)
+			backend.despeckle_choice(self.choice, self.secondary_value)
 			self.parent.destroy()
 			DespeckleWindow.transition(self.below_window)
 		else:
