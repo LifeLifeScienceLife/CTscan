@@ -5,9 +5,9 @@ from PIL import ImageTk, Image
 import PyPore_New_GUI as backend
 import cv2
 import sys
+import numpy as np
 import threading
 from matplotlib import pyplot as plt
-
 
 crop = False
 green = "#53c653"
@@ -90,7 +90,6 @@ class IntroWindow(Window):
 		parent.button1.config(text="Add Images", bg=green, command=self.img_browse)
 		parent.button2.config(state='disable', text="Add Output Excel File", command=self.excel_browse)
 		parent.button3.config(state='disable', text="Add Additional Information", command=self.add_info, padx=75)
-		# parent.button3.config(text="Add Additional Information", command=self.add_info, padx=75)
 
 	# Read in image files using tkinter filedialog. Uses threading to display loading bar while reading in images.
 	def img_browse(self):
@@ -101,6 +100,8 @@ class IntroWindow(Window):
 			if backend.file_reader(file_location):
 				self.parent.button2.config(bg=green, state='normal')
 				self.parent.button1.config(bg="SystemButtonFace")
+			else:
+				popupmsg("Please select a valid image")
 
 			self.parent.label.grid_forget()
 			self.parent.progress.grid_forget()
@@ -218,7 +219,9 @@ class AddInfoPopup(Frame):
 			# Ensure voxel size is valid
 			if self.var1.get() == 1:
 				if validate_input(self.Voxel_Entry.get()):
-					backend.voxel_size = self.Voxel_Entry.get()
+					voxel_size = np.float64(self.Voxel_Entry.get()) * (10 ** -4)  # Converting um to cm
+					voxel_size = voxel_size ** 3  # Cubing cm
+					backend.voxel_size = voxel_size
 				else:
 					valid_voxel = False
 					popupmsg("Please enter a number for pixel size")
@@ -226,15 +229,17 @@ class AddInfoPopup(Frame):
 			# Ensures user selects a valid image file name
 			if self.var2.get() == 3:
 				if self.img_file_path is None:
-					popupmsg("Please Input A Valid Filename")
+					popupmsg("Please input a valid image filename")
 					valid_image = False
+				else:
+					backend.save_images = True
 
 			def set_crop_parameters():
 				global crop
 
 				if self.var3.get() == 5:
 					crop = True
-					backend.crop_selector(True)
+					backend.crop_choice(True)
 
 				self.root_window.label.grid_forget()
 				self.root_window.progress.grid_forget()
@@ -427,15 +432,15 @@ class Image_Comparison(ExtendedPopupWindow):
 		if self.operation == "Thresholding":
 			if choice == 2:
 				backend.global_means_thresh_value = secondary_value  # Set the global means threshold value
-			backend.threshold_selector(choice)
+			backend.threshold_test_image_generator(choice)
 			OG_images = backend.test_image
 			New_images = backend.threshold_test_images
 		elif self.operation == "Despeckeling":
-			backend.despeckle_selector(choice, secondary_value)
+			backend.despeckle_test_image_generator(choice, secondary_value)
 			OG_images = backend.threshold_test_images
 			New_images = backend.despeckle_test_images
 		else:
-			backend.crop_selector2(secondary_value)
+			backend.crop_test_image_generator(secondary_value)
 			OG_images = backend.despeckle_test_images
 			New_images = backend.cropped_test_images
 
@@ -500,11 +505,10 @@ def validate_input(value):
 
 
 def call_backend():
-	backend.main_flow()
+	backend.loading_backend()
 
 
 if __name__ == "__main__":
 	root = Tk()
 	app = IntroWindow(root)
 	root.mainloop()
-

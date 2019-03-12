@@ -1,42 +1,66 @@
+import os
 import cv2
 import glob
 import random
 import sys
 import numpy as np
 import openpyxl
+import threading
+from tkinter import *
+from tkinter.ttk import Progressbar
 from openpyxl import load_workbook
 from skimage.morphology import remove_small_objects
 from multiprocessing.dummy import Pool as ThreadPool
 from scipy.ndimage import label
 
-test_image = []  # Small Array of images
+################################Defining Global Variables (For GUI interfacing)#########################################
+
+# Collections of three images to display to the user the effect of various operations
+test_image = []
 threshold_test_images = []
 despeckle_test_images = []
 cropped_test_images = []
 
-images = None
-voxel_size = None
-output_image_file_name = None
+# Images read in to the program, and the path that they came from
+images = []
+file_path = None
 
+# Used to measure the volume of a sample, optional parameter
+voxel_size = None
+
+# Determine if images should be saved and if so, what their names should be
+save_images = False
+output_image_filename = None
+
+# Variables used to create/save the excel file where values will be output
 workbook = None
 worksheet = None
 excel_file_name = None
 
+# Determine the users threshold and despeckle type
 threshold_type = None
-despeckle_type = None
+despeckle_type = None  # Despeckle type in a two tuple, first value is the choice, second value is the area
+
+# Custom parameter for global means thresholding
 global_means_thresh_value = 127
 
+# Variables to determine if cropping should be performed, and if so, gets the parameters and scale that will be used
 perform_crop = None
 cparams = None
 scale = None
 
+# Used to exit the final loading bar (essentially killing tkinter root.mainloop())
+still_loading = True
+
 width_inc = 1  # Represents the inc/decrement step in shape outliner (Increase to speed up runtime)
 
 
-def file_reader(file_location):
-	global test_image, images
+###################################Functions that interface with front end GUI##########################################
 
-	test_image = []  # Reset global array value
+# Function called from front end to read in image files. Ensures a valid file format is selected and if so, makes use
+# of multi-threading to speed up the process so the user does not have to wait overly long to continue in the frontend.
+def file_reader(file_location):
+	global test_image, images, file_path
 
 	if file_location is not None and len(file_location) > 1:
 
@@ -49,38 +73,37 @@ def file_reader(file_location):
 
 		file_location = file_path + "/*." + file_type
 		glob_file = (glob.glob(file_location))  # Read all files in a folder using glob
-		test_image_local = (cv2.imread(glob_file[0], 0))  # Try to read a file
 
 		try:
-			cv2.resize(test_image_local, (1, 1)) # Test that we have an image file
-
-			# Multi Thread image read to speed up the process
-			pool = ThreadPool(4)
-			images = pool.map(multi_thread_file_read, glob_file)
-			pool.close()
-			pool.join()
-
-			# Get a subset of images for test images
-			for i in range(0, len(images), len(images) // 3):
-				test_image.append(images[i])
-
+			cv2.resize(cv2.imread(glob_file[0], 0), (1, 1))  # Tests the files read are images using cv2.resize
 		except cv2.error:
-			print("Bad Format") #TODO ERROR MESSAGES FOR BAD FORMAT
 			return False
+
+		def multi_thread_file_read(file):
+			return cv2.imread(file, 0)
+
+		# Multi Thread image read to speed up the process
+		pool = ThreadPool(4)
+		images = pool.map(multi_thread_file_read, glob_file)
+		pool.close()
+		pool.join()
+
+		test_image = []  # Reset global value so I do not append on top of old values
+
+		# Get a subset of images for test images
+		for i in range(0, len(images), len(images) // 3):
+			test_image.append(images[i])
 
 		return True
 
 	return False
 
 
-def multi_thread_file_read(file):
-	return cv2.imread(file, 0)
-
-
+# Read in a pre-existing excel file TODO CREATE NEW WORKSHEET IF CURRENT WORKSHEET FORMAT IS OFF
 def old_excel_reader(excel_file):
 	global workbook, worksheet, excel_file_name
 
-	if excel_file is not None and len(excel_file) > 1:
+	if excel_file is not None and len(excel_file) > 1:  # Ensures the user has actually selected an excel file
 		workbook = load_workbook(excel_file)
 		worksheet = workbook.active
 		excel_file_name = excel_file
@@ -90,6 +113,7 @@ def old_excel_reader(excel_file):
 	return False
 
 
+# Creates a new excel file (Note, input validation is performed in the frontend as part of filedialog.asksaveasfilename
 def new_excel_reader(excel_file):
 	global workbook, worksheet, excel_file_name
 
@@ -104,41 +128,62 @@ def new_excel_reader(excel_file):
 	return False
 
 
+# Parses the users chosen image file name output into a more usable format (Allows me to append numbers to the filename)
 def save_images_as(img_name):
-	global output_image_file_name
+	global output_image_filename
 
-	print(img_name)
 	if img_name is not None and len(img_name) > 1:
-		output_image_file_name = img_name
+		for i in range(len(img_name) - 1, -1, -1):
+			if img_name[i] == "/":
+				output_image_path = img_name[i:len(img_name) + 1]
+				output_image_filename = output_image_path.split(".")  # First Part is filename, second part is file type
+				break
 		return True
 
 	return False
 
+# NOTE: THRESHOLD CHOICE SELECTION IS DONE DIRECTLY IN THE FRONT END BY ASSIGNING VALUES TO GLOBAL VARIABLE, THIS IS
+# DONE BECAUSE THERE IS MORE VARIABILITY AMONG THE DIFFERENT OPTIONS, EASIER THAN PASSING LOTS OF DIFFERENT VALUES
 
-def threshold_selector(user_choice):
+
+# Set the type of despeckeling to perform as well as the area to despeckle
+def despeckle_choice(user_choice, area):
+	global despeckle_type
+
+	despeckle_type = (user_choice, int(round(float(area))))
+
+
+# Toggle if cropping will be performed and if so, generate the cropping parameters (see crop_parameters for details)
+def crop_choice(user_choice):
+	global perform_crop, cparams
+
+	if user_choice:
+		perform_crop = True
+		cparams = crop_parameters()
+	else:
+		perform_crop = False
+
+
+# Generates the images the user will see when doing a image comparison for thresholding in the front end
+def threshold_test_image_generator(user_choice):
 	global threshold_test_images
 
-	threshold_test_images = []  # Reset global array
+	threshold_test_images = []  # Reset global array (Otherwise we just append over old images)
 
 	for i in range(len(test_image)):
 		if user_choice == 1:
 			threshold_test_images.append(otsu_threshold(test_image[i]))
 		elif user_choice == 2:
-			threshold_test_images.append(phanstalker_threshold(test_image[i]))
-		elif user_choice == 3:
 			threshold_test_images.append(global_threshold(test_image[i]))
+		elif user_choice == 3:
+			threshold_test_images.append(phansalkar_threshold(test_image[i]))
 
 
-def despeckle_choice(user_choice, area=None):
-	global despeckle_type
-	if despeckle_type is None:
-		despeckle_type = (user_choice, int(round(float(area))))
-
-
-def despeckle_selector(user_choice, area):
+# Generates the images the user will see when doing a image comparison for despeckeling in the front end
+def despeckle_test_image_generator(user_choice, area):
 	global despeckle_test_images
 
-	despeckle_test_images = []  # Reset global array
+	despeckle_test_images = []  # Reset global array (Otherwise we just append over old images)
 
 	for i in range(len(test_image)):
 		if user_choice == 1:
@@ -149,17 +194,8 @@ def despeckle_selector(user_choice, area):
 			despeckle_test_images.append(less_than_despeckle(test_image[i], area))
 
 
-def crop_selector(user_choice):
-	global perform_crop, cparams
-
-	if user_choice:
-		perform_crop = True
-		cparams = crop_parameters(images)
-	else:
-		perform_crop = False
-
-
-def crop_selector2(user_choice):
+# Generates the images the user will see when doing a image comparison for cropping in the front end
+def crop_test_image_generator(user_choice):
 	global cropped_test_images, scale
 
 	cropped_test_images = []  # Reset global array
@@ -171,19 +207,103 @@ def crop_selector2(user_choice):
 
 ###################################BACK END ONLY BELOW#################################################################
 
-# TODO IMPLEMENT THE OTHER THRESHOLDING TECHNIQUES
+# Main_flow acts as a main in that it delegates all tasks of the backend. First it processes the images using
+# image_processor, after which said images are fed into the analyzer which returns the cumulative porosity and volume
+# of the total dataset. These values are given to the data writer to save to an excel file. Finally, the images we
+# processed can be saved to an output folder at which point the program is finished!
+def main_flow():
+
+	print("Starting Backend")
+
+	processed_images = image_processor()
+
+	results = analyze(processed_images)  # Results computes porosity/ surface area for each slice
+	porosities = results[0]
+	surface_area = results[1]
+
+	if voxel_size is not None:
+		volume = count_volume(surface_area)
+	else:
+		volume = "N/A"
+
+	porosity = np.average(np.array(porosities))
+
+	data_writer(worksheet, porosity, volume)
+	workbook.save(excel_file_name)
+
+	if save_images:
+		output_folder = output_images()
+		for i in range(len(images)):
+			cv2.imwrite(output_folder + output_image_filename[0] + str(i) + "." + output_image_filename[1], images[i])
+
+	print(excel_file_name)
+
+	return
+
+
+# Image processors handles all image processing procedures which includes thresholding, despeckeling and cropping.
+# The despeckle and crop functionality are essentially complete, but may need to be reworked with UI implementation
+def image_processor():
+
+	# Threshold all images
+	for i in range(0, len(images)):
+		if threshold_type == 1:
+			images[i] = otsu_threshold(images[i])
+		elif threshold_type == 2:
+			images[i] = global_threshold(images[i])
+		else:
+			images[i] = phansalkar_threshold(images[i])
+
+	# Despeckle all images
+	for i in range(0, len(images)):
+		if despeckle_type[0] == 1 or 3:
+			images[i] = less_than_despeckle(images[i], despeckle_type[1])
+		else:
+			images[i] = greater_than_despeckle(images[i], despeckle_type[1])
+
+	# Crop all images
+	if perform_crop:
+		for i in range(0, len(images)):
+			images[i] = crop(images[i])
+
+	return images
+
+
+# Analyze preforms porosity and surface area measurements on binary images. First each image gets a ROI shrinkwrap
+# which accurately delineates the sample boundary. The total pixels of this shrinkwrap are added a surface area holder
+# which is later multiplied by voxel size to estimate object volume. Likewise a ratio between bright pixels in the
+# shape outlined image vs original image is used to estimate porosity. These values are then returned to main.
+def analyze(processed_images):
+	porosities = []
+	surface_area = 0
+	pimages = processed_images
+
+	# Iterate through the images counting porosity and surface area for each slice
+	for i in range(0, len(pimages)):
+		progress_tracker(i + 1, len(pimages), 'Porosity estimation ')  # Shows user the programs progress
+		total_img_pixels = np.count_nonzero(pimages[i])
+		if total_img_pixels > 10:  # Exclude images that contain little to no white pixels
+			shape = shape_outliner(pimages[i])
+			total_shape_pixels = np.count_nonzero(shape)
+			porosities.append(por_calc(total_img_pixels, total_shape_pixels))
+			surface_area += total_shape_pixels
+
+	return porosities, surface_area
+
+
 def otsu_threshold(image):
-	null, thres_img = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-	return thres_img
-
-
-def phanstalker_threshold(image):
-	null, thres_img = cv2.threshold(image, global_means_thresh_value, 255, cv2.THRESH_BINARY)
+	_, thres_img = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 	return thres_img
 
 
 def global_threshold(image):
-	null, thres_img = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
+	_, thres_img = cv2.threshold(image, global_means_thresh_value, 255, cv2.THRESH_BINARY)
+	return thres_img
+
+
+# TODO IMPLEMENT PHANSALKER
+def phansalkar_threshold(image):
+	_, thres_img = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
 	return thres_img
 
 
@@ -196,11 +316,14 @@ def less_than_despeckle(image, min_area):
 
 	bool_arr = np.array(image, bool)
 	despeckeled_img = remove_small_objects(bool_arr, min_area)
-	grey_scale = np.array([a*b for a,b in zip(despeckeled_img, grey_scale_conv_array)], dtype=np.uint8)
+
+	grey_scale = np.array([a*b for a, b in zip(despeckeled_img, grey_scale_conv_array)], dtype=np.uint8)
 
 	return grey_scale
 
 
+# Despeckle images using a remove small objects function, size of objects is user determined, use an XOR function on two
+# overlapping binary arrays (original image and less than despeckeled version) which simulates a greater than despeckle effect.
 def greater_than_despeckle(image, min_area):
 
 	min_area = int(round(float(min_area)))
@@ -210,7 +333,7 @@ def greater_than_despeckle(image, min_area):
 	despeckeled_img = remove_small_objects(bool_arr, min_area)
 
 	final_image = np.array(np.logical_xor(image, despeckeled_img), dtype=np.uint8)
-	grey_scale = np.array([a*b for a,b in zip(final_image, grey_scale_conv_array)], dtype=np.uint8)
+	grey_scale = np.array([a*b for a, b in zip(final_image, grey_scale_conv_array)], dtype=np.uint8)
 
 	return grey_scale
 
@@ -245,7 +368,7 @@ def auto_despeckle_parameters():
 # sample in the image. Given these top images, we then test how far we can crop each image in each of the compass
 # directions. We then take the smallest values from each direction and then apply a scaling factor to these values.
 # By doing this computation, we are careful to not cut into our data when doing our cropping.
-def crop_parameters(images):
+def crop_parameters():
 	height = images[0].shape[0]
 	width = images[0].shape[1]
 
@@ -353,68 +476,11 @@ def por_calc(bright_pixels, total_pixels):
 	return (1 - (bright_pixels / float(total_pixels))) * 100
 
 
-# Displays the progress of the program (percent wise) to the terminal. Inspired by:
-# https://stackoverflow.com/questions/43515165/pycharm-python-console-printing-on-the-same-line-not-working-as-intended
-def progress_tracker(completion, total, operation):
-	sys.stdout.write("\r{0}".format(operation + str("%.2f" % (completion / total * 100)) + "% Complete"))
-	sys.stdout.flush()
-	if completion == total and operation == 'Porosity estimation ':
-		print("\nDONE!")
-
-
-def main_flow():
-
-	print("Starting Backend")
-
-	for i in range(0, len(images)):
-		null, thres_img = cv2.threshold(images[i], 127, 255, cv2.THRESH_BINARY)
-		images[i] = less_than_despeckle(thres_img, despeckle_type[1])
-
-	for i in range(0, len(images)):
-		images[i] = crop(images[i], scale)
-
-	results = analyze(images)  # Results computes porosity/ surface area for each slice
-	porosities = results[0]
-	surface_area = results[1]
-
-	if voxel_size is not None:
-		volume = count_volume(surface_area, voxel_size)
-	else:
-		volume = "N/A"
-
-	# Ensure we do not get error taking average on empty array
-	if len(porosities) != 0:
-		porosity = np.average(np.array(porosities))
-	else:
-		porosity = 0
-
-	data_writer(worksheet, porosity, volume)
-	workbook.save(excel_file_name)
-
-	print(excel_file_name)
-
-	sys.exit()
-
-
-# Analyze preforms porosity and surface area measurements on binary images. First each image gets a ROI shrinkwrap
-# which accurately delineates the sample boundary. The total pixels of this shrinkwrap are added a surface area holder
-# which is later multiplied by voxel size to estimate object volume. Likewise a ratio between bright pixels in the
-# shape outlined image vs original image is used to estimate porosity. These values are then returned to main.
-def analyze(images):
-	porosities = []
-	surface_area = 0
-
-	# Iterate through the images counting porosity and surface area for each slice
-	for i in range(0, len(images)):
-		progress_tracker(i + 1, len(images), 'Porosity estimation ')  # Shows user the programs progress
-		total_img_pixels = np.count_nonzero(images[i])
-		if total_img_pixels > 10:  # Exclude images that contain little to no white pixels
-			shape = shape_outliner(images[i])
-			total_shape_pixels = np.count_nonzero(shape)
-			porosities.append(por_calc(total_img_pixels, total_shape_pixels))
-			surface_area += total_shape_pixels
-
-	return porosities, surface_area
+# Counts the volume for a CT scan (Multiply the surface area by voxel size) Returns volume in cm^3 (I think)
+# NOTE: Assumes no porosity in volume calculation, for 'real' volume, simply subtract volume*porosity from this volume
+def count_volume(total_voxels):
+	volume = total_voxels * voxel_size
+	return volume
 
 
 # Given a excel sheet, data_writer writes the porosity previously computed to the excel sheet with a clean format
@@ -429,8 +495,89 @@ def data_writer(ws, porosity, volume):
 	ws.cell(row=i + 2, column=2).value = volume
 
 
-# Counts the volume for a CT scan (Multiply the surface area by voxel size) Returns volume in cm^3 (I think)
-# NOTE: Assumes no porosity in volume calculation, for 'real' volume, simply subtract volume*porosity from this volume
-def count_volume(total_voxels, voxel_size):
-	volume = total_voxels * voxel_size
-	return volume
+# Displays the progress of the program (percent wise) to the terminal. Inspired by:
+# https://stackoverflow.com/questions/43515165/pycharm-python-console-printing-on-the-same-line-not-working-as-intended
+def progress_tracker(completion, total, operation):
+	sys.stdout.write("\r{0}".format(operation + str("%.2f" % (completion / total * 100)) + "% Complete"))
+	sys.stdout.flush()
+	if completion == total and operation == 'Porosity estimation ':
+		print("\nDONE!")
+
+
+# Creates the directory where I will be outputting the images, automatically creates a new directory for each new run
+# of the app, all stored within the PyPore master folder, hopefully to promote organization.
+def output_images():
+	# Try to create the main directory containing the sub directories
+	try:
+		os.makedirs(r'%s/PyPore_Images/' % file_path)
+	except FileExistsError:
+		pass
+
+	folder_count = 1
+	made_folder = False
+	output_directory = '%s/PyPore_Images/' % file_path
+
+	# Iterate until I can make a sub directory for my images to be saved too
+	while not made_folder:
+		try:
+			os.makedirs(r'%s/PyPore_Images_%d/' % (output_directory, folder_count))
+			made_folder = True
+		except FileExistsError:
+			folder_count += 1
+
+	return '%sPyPore_Images_%d' % (output_directory, folder_count)  # Location where images will be saved too
+
+
+##########################################Creating loading screen#######################################################
+
+
+# This function uses threading to display the loading bar and run the backend at the same time
+def loading_backend():
+	Thread()  # Thread class runs the backend
+
+	root = Tk()  # Creates the loading screen and keeps it running until the backend is finished
+	progress_window(root)
+	while still_loading:
+		root.update_idletasks()
+		root.update()
+	root.destroy()
+
+
+# Modified from https://stackoverflow.com/questions/459083/how-do-you-run-your-own-code-alongside-tkinters-event-loop/538559#538559
+# Using a thread class to run the backend.
+class Thread(threading.Thread):
+
+	def __init__(self):
+		threading.Thread.__init__(self)
+		self.start()
+
+	def run(self):
+		global still_loading
+
+		main_flow()
+		still_loading = False # When main flow is done executing we kill the loading screen using this global variable
+
+
+# A Tkinter frame that displays a loading bar to let the user know the system is doing computation.
+class progress_window(Frame):
+
+	# create default parameters for all windows
+	def __init__(self, master=None):
+		Frame.__init__(self, master)
+		self.master = master
+		self.grid(sticky=(E + W + N + S))
+
+		master.title("PyPore")
+		master.iconbitmap('PyPore.ico')
+		master.resizable(width=False, height=False)
+		master.columnconfigure(0, weight=1)
+		master.geometry("350x100")
+
+		self.master.progress = Progressbar(self, orient=HORIZONTAL, length=345, mode='determinate')
+		self.master.progress_label = Label(self, text="Loading in Images")
+		self.master.progress_label.grid(row=0, column=0, padx=100, pady=(20, 0))
+		self.master.progress.grid(row=1, column=0, padx=3)
+		self.master.progress.start()
+
+
+
