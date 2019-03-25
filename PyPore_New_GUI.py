@@ -51,6 +51,7 @@ scale = None
 
 # Used to exit the final loading bar (essentially killing tkinter root.mainloop())
 still_loading = True
+current_operation = None
 
 width_inc = 1  # Represents the inc/decrement step in shape outliner (Increase to speed up runtime)
 
@@ -212,8 +213,7 @@ def crop_test_image_generator(user_choice):
 # of the total dataset. These values are given to the data writer to save to an excel file. Finally, the images we
 # processed can be saved to an output folder at which point the program is finished!
 def main_flow():
-
-	print("Starting Backend")
+	global current_operation
 
 	processed_images = image_processor()
 
@@ -232,6 +232,7 @@ def main_flow():
 	workbook.save(excel_file_name)
 
 	if save_images:
+		current_operation = "Saving Images"
 		output_folder = output_images()
 		for i in range(len(images)):
 			cv2.imwrite(output_folder + output_image_filename[0] + str(i) + "." + output_image_filename[1], images[i])
@@ -244,8 +245,10 @@ def main_flow():
 # Image processors handles all image processing procedures which includes thresholding, despeckeling and cropping.
 # The despeckle and crop functionality are essentially complete, but may need to be reworked with UI implementation
 def image_processor():
+	global current_operation
 
 	# Threshold all images
+	current_operation = "Thresholding"
 	for i in range(0, len(images)):
 		if threshold_type == 1:
 			images[i] = otsu_threshold(images[i])
@@ -255,6 +258,7 @@ def image_processor():
 			images[i] = phansalkar_threshold(images[i])
 
 	# Despeckle all images
+	current_operation = "Despeckeling"
 	for i in range(0, len(images)):
 		if despeckle_type[0] == 1 or 3:
 			images[i] = less_than_despeckle(images[i], despeckle_type[1])
@@ -262,6 +266,7 @@ def image_processor():
 			images[i] = greater_than_despeckle(images[i], despeckle_type[1])
 
 	# Crop all images
+	current_operation = "Cropping"
 	if perform_crop:
 		for i in range(0, len(images)):
 			images[i] = crop(images[i])
@@ -274,11 +279,14 @@ def image_processor():
 # which is later multiplied by voxel size to estimate object volume. Likewise a ratio between bright pixels in the
 # shape outlined image vs original image is used to estimate porosity. These values are then returned to main.
 def analyze(processed_images):
+	global current_operation
+
 	porosities = []
 	surface_area = 0
 	pimages = processed_images
 
 	# Iterate through the images counting porosity and surface area for each slice
+	current_operation = "Calculating Porosity"
 	for i in range(0, len(pimages)):
 		progress_tracker(i + 1, len(pimages), 'Porosity estimation ')  # Shows user the programs progress
 		total_img_pixels = np.count_nonzero(pimages[i])
@@ -533,11 +541,17 @@ def output_images():
 
 # This function uses threading to display the loading bar and run the backend at the same time
 def loading_backend():
+	global loading_text, root
+
+	# Creates the loading screen and keeps it running until the backend is finished
+	root = Tk()
+	loading_text = StringVar(root)  # Make the loading bar text a malleable variable
+	progress_window(root)
+
 	Thread()  # Thread class runs the backend
 
-	root = Tk()  # Creates the loading screen and keeps it running until the backend is finished
-	progress_window(root)
 	while still_loading:
+		loading_text.set(current_operation)
 		root.update_idletasks()
 		root.update()
 	root.destroy()
@@ -555,13 +569,12 @@ class Thread(threading.Thread):
 		global still_loading
 
 		main_flow()
-		still_loading = False # When main flow is done executing we kill the loading screen using this global variable
+		still_loading = False  # When main flow is done executing we kill the loading screen using this global variable
 
 
 # A Tkinter frame that displays a loading bar to let the user know the system is doing computation.
 class progress_window(Frame):
 
-	# create default parameters for all windows
 	def __init__(self, master=None):
 		Frame.__init__(self, master)
 		self.master = master
@@ -574,7 +587,7 @@ class progress_window(Frame):
 		master.geometry("350x100")
 
 		self.master.progress = Progressbar(self, orient=HORIZONTAL, length=345, mode='determinate')
-		self.master.progress_label = Label(self, text="Loading in Images")
+		self.master.progress_label = Label(self, textvariable=loading_text)
 		self.master.progress_label.grid(row=0, column=0, padx=100, pady=(20, 0))
 		self.master.progress.grid(row=1, column=0, padx=3)
 		self.master.progress.start()
