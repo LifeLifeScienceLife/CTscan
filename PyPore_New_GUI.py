@@ -100,15 +100,24 @@ def file_reader(file_location):
 	return False
 
 
-# Read in a pre-existing excel file TODO CREATE NEW WORKSHEET IF CURRENT WORKSHEET FORMAT IS OFF
+# Read in a pre-existing excel file
 def old_excel_reader(excel_file):
 	global workbook, worksheet, excel_file_name
 
 	if excel_file is not None and len(excel_file) > 1:  # Ensures the user has actually selected an excel file
-		workbook = load_workbook(excel_file)
-		worksheet = workbook.active
 		excel_file_name = excel_file
+		workbook = load_workbook(excel_file)
 
+		# Test if any sheet has correct title
+		for title in workbook.sheetnames:
+			if title == "PyPore Data":
+				worksheet = workbook[title]
+				return True
+
+		# If no sheets have the correct title, then we create a new sheet
+		worksheet = workbook.create_sheet("PyPore Data")
+		worksheet_headers()
+		workbook.save(excel_file)
 		return True
 
 	return False
@@ -122,11 +131,24 @@ def new_excel_reader(excel_file):
 		excel_file = excel_file + ".xlsx"
 		workbook = openpyxl.Workbook()
 		worksheet = workbook.active
+		worksheet.title = "PyPore Data"
+		worksheet_headers()
 		excel_file_name = excel_file
 
 		return True
 
 	return False
+
+
+# Simple helper function that creates headers for newly created excel sheets
+def worksheet_headers():
+	global worksheet
+
+	worksheet.sheet_properties.tabColor = "53C653"
+	worksheet.cell(row=1, column=2).value = "Porosity (%)"
+	worksheet.cell(row=1, column=3).value = "Total Specimen Volume (cm^3)"
+	worksheet.cell(row=1, column=4).value = "Porous Volume (cm^3)"
+	worksheet.cell(row=1, column=5).value = "Non-Porous Volume (cm^3)"
 
 
 # Parses the users chosen image file name output into a more usable format (Allows me to append numbers to the filename)
@@ -224,11 +246,11 @@ def main_flow():
 	if voxel_size is not None:
 		volume = count_volume(surface_area)
 	else:
-		volume = "N/A"
+		volume = None
 
 	porosity = np.average(np.array(porosities))
 
-	data_writer(worksheet, porosity, volume)
+	data_writer(porosity, volume)
 	workbook.save(excel_file_name)
 
 	if save_images:
@@ -248,8 +270,8 @@ def image_processor():
 	global current_operation
 
 	# Threshold all images
-	current_operation = "Thresholding"
 	for i in range(0, len(images)):
+		current_operation = progress_tracker(i + 1, len(images), "Thresholding")  # Shows user the programs progress
 		if threshold_type == 1:
 			images[i] = otsu_threshold(images[i])
 		elif threshold_type == 2:
@@ -258,17 +280,17 @@ def image_processor():
 			images[i] = phansalkar_threshold(images[i])
 
 	# Despeckle all images
-	current_operation = "Despeckeling"
 	for i in range(0, len(images)):
+		current_operation = progress_tracker(i + 1, len(images), "Despeckeling")  # Shows user the programs progress
 		if despeckle_type[0] == 1 or 3:
 			images[i] = less_than_despeckle(images[i], despeckle_type[1])
 		else:
 			images[i] = greater_than_despeckle(images[i], despeckle_type[1])
 
 	# Crop all images
-	current_operation = "Cropping"
 	if perform_crop:
 		for i in range(0, len(images)):
+			current_operation = progress_tracker(i + 1, len(images), "Cropping")  # Shows user the programs progress
 			images[i] = crop(images[i])
 
 	return images
@@ -286,9 +308,8 @@ def analyze(processed_images):
 	pimages = processed_images
 
 	# Iterate through the images counting porosity and surface area for each slice
-	current_operation = "Calculating Porosity"
 	for i in range(0, len(pimages)):
-		progress_tracker(i + 1, len(pimages), 'Porosity estimation ')  # Shows user the programs progress
+		current_operation = progress_tracker(i + 1, len(pimages), 'Porosity estimation ')  # Shows user the programs progress
 		total_img_pixels = np.count_nonzero(pimages[i])
 		if total_img_pixels > 10:  # Exclude images that contain little to no white pixels
 			shape = shape_outliner(pimages[i])
@@ -492,24 +513,27 @@ def count_volume(total_voxels):
 
 
 # Given a excel sheet, data_writer writes the porosity previously computed to the excel sheet with a clean format
-def data_writer(ws, porosity, volume):
+def data_writer(porosity, volume):
+
+	ws = worksheet
+
 	i = 1  # We loop to find empty cells before outputting the results
-	while ws.cell(row=i, column=1).value is not None and ws.cell(row=i + 2, column=1).value is not None:
-		i += 4
-	ws.cell(row=i, column=1).value = "Trial %d" % (i // 3)
-	ws.cell(row=i + 1, column=1).value = "Porosity:"
-	ws.cell(row=i + 1, column=2).value = porosity
-	ws.cell(row=i + 2, column=1).value = "Volume:"
-	ws.cell(row=i + 2, column=2).value = volume
+	while ws.cell(row=i, column=2).value is not None:
+		i += 1
+	ws.cell(row=i, column=1).value = "Trial %d" % (i - 1)
+	ws.cell(row=i, column=2).value = porosity
+	if volume is None:
+		for j in range(3, 6):
+			ws.cell(row=i, column=j).value = "N/A"
+	else:
+		ws.cell(row=i, column=3).value = volume
+		porous_volume = (porosity/100) * volume
+		ws.cell(row=i, column=4).value = porous_volume
+		ws.cell(row=i, column=5).value = volume - porous_volume
 
 
-# Displays the progress of the program (percent wise) to the terminal. Inspired by:
-# https://stackoverflow.com/questions/43515165/pycharm-python-console-printing-on-the-same-line-not-working-as-intended
 def progress_tracker(completion, total, operation):
-	sys.stdout.write("\r{0}".format(operation + str("%.2f" % (completion / total * 100)) + "% Complete"))
-	sys.stdout.flush()
-	if completion == total and operation == 'Porosity estimation ':
-		print("\nDONE!")
+	return operation + str("%.2f" % (completion / total * 100)) + "% Complete"
 
 
 # Creates the directory where I will be outputting the images, automatically creates a new directory for each new run
@@ -588,7 +612,7 @@ class progress_window(Frame):
 
 		self.master.progress = Progressbar(self, orient=HORIZONTAL, length=345, mode='determinate')
 		self.master.progress_label = Label(self, textvariable=loading_text)
-		self.master.progress_label.grid(row=0, column=0, padx=100, pady=(20, 0))
+		self.master.progress_label.grid(row=0, column=0, pady=(20, 0))
 		self.master.progress.grid(row=1, column=0, padx=3)
 		self.master.progress.start()
 

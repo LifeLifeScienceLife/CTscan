@@ -30,16 +30,14 @@ class Window(Frame):
 		main_menu = Menu(master)
 		master.config(menu=main_menu)
 		sub_menu_1 = Menu(main_menu, tearoff=0)
-		sub_menu_2 = Menu(main_menu, tearoff=0)
 
 		main_menu.add_cascade(label="Options", menu=sub_menu_1)
+		sub_menu_1.add_command(label="General", command=lambda: self.help_dialog("Introduction.jpg"))
 		sub_menu_1.add_command(label="Undo", command=self.undo)
 		sub_menu_1.add_command(label="Restart", command=self.restart)
 		sub_menu_1.add_command(label="Quit", command=sys.exit)
 
-		main_menu.add_cascade(label="Help", menu=sub_menu_2)
-		sub_menu_2.add_command(label="General")
-		sub_menu_2.add_command(label="Thresholding")
+		main_menu.add_command(label="Help", command=self.help)
 
 		master.button1 = Button(self, text="")
 		master.button1.grid(row=0, column=1, sticky=(E + W + N + S))
@@ -63,6 +61,10 @@ class Window(Frame):
 		self.master.progress.grid(row=4, column=1, sticky=E)
 		self.master.progress.start()
 
+	def help_dialog(self, message):
+		temp = HelpWindow(Toplevel())
+		HelpWindow.display_help(temp, message)
+
 	def restart(self):
 		self.destroy()
 		IntroWindow(self.master)
@@ -79,6 +81,26 @@ class ExtendedPopupWindow(Frame):
 		master.geometry("558x923+0+0")
 		master.resizable(width=False, height=False)
 		master.grab_set()
+
+
+class HelpWindow(Frame):
+	def __init__(self, master=None):
+		Frame.__init__(self, master)
+		self.master = master
+		self.grid(sticky=(E + W + N + S))
+
+		master.iconbitmap('PyPore.ico')
+		master.title("PyPore")
+		master.resizable(width=False, height=False)
+		master.grab_set()
+
+	def display_help(self, dialog):
+		New = cv2.imread(dialog, 1)
+		New = cv2.resize(New, (1000, 500))
+		tk_img = ImageTk.PhotoImage(Image.fromarray(New))
+		img = Label(self, image=tk_img)
+		img.image = tk_img
+		img.grid(row=0, column=0, rowspan=3)
 
 
 class IntroWindow(Window):
@@ -122,6 +144,10 @@ class IntroWindow(Window):
 	def undo(self):
 		self.destroy()
 		IntroWindow(self.master)
+
+	def help(self):
+		temp = HelpWindow(Toplevel())
+		HelpWindow.display_help(temp, "Introduction.jpg")
 
 	def transition(self):
 		self.destroy()
@@ -299,6 +325,10 @@ class ThresholdWindow(Window):
 		submit = Button(f1, text="submit", command=lambda: Image_Comparison(Toplevel(), 2, self, "Thresholding", thresh_scale.get()))
 		submit.grid(row=3, column=0)
 
+	def help(self):
+		temp = HelpWindow(Toplevel())
+		HelpWindow.display_help(temp, "Threshold.jpg")
+
 	def transition(self):
 		self.destroy()
 		DespeckleWindow(self.parent)
@@ -369,6 +399,10 @@ class DespecklePopup(Frame):
 		self.Area_Entry = Entry(self, width=10)
 		self.Area_Entry.grid(row=0, column=1, pady=(130, 0))
 
+	def help(self):
+		temp = HelpWindow(Toplevel())
+		HelpWindow.display_help(temp, "Despeckeling.jpg")
+
 	def transition(self):
 		if validate_input(self.Area_Entry.get()):
 			Image_Comparison(Toplevel(), self.choice, self.parent, "Despeckeling", self.Area_Entry.get())
@@ -396,7 +430,7 @@ class CropWindow(Window):
 		f1 = Frame(self)
 		f1.grid(row=1, column=1)
 
-		Label(f1, text="Select a scale:").grid(row=0, column=0, sticky=(E + W + N + S), padx=10)
+		Label(f1, text="Select % blank space to keep:").grid(row=0, column=0, sticky=(E + W + N + S), padx=10)
 		self.crop_scale = Scale(f1, from_=1, to=100, orient=HORIZONTAL)
 		self.crop_scale.grid(row=0, column=1, sticky=(E + W + N + S))
 
@@ -406,6 +440,10 @@ class CropWindow(Window):
 
 	def enable_button_3(self):
 		self.parent.button3.config(state='normal', bg=green)
+
+	def help(self):
+		temp = HelpWindow(Toplevel())
+		HelpWindow.display_help(temp, "Cropping.jpg")
 
 	def transition(self):
 		self.parent.destroy()
