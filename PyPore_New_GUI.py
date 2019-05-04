@@ -6,6 +6,7 @@ import sys
 import numpy as np
 import openpyxl
 import threading
+import opt_phansalkar
 from tkinter import *
 from tkinter.ttk import Progressbar
 from openpyxl import load_workbook
@@ -15,7 +16,7 @@ from scipy.ndimage import label
 
 ################################Defining Global Variables (For GUI interfacing)#########################################
 
-# Collections of three images to display to the user the effect of various operations
+# Collections of three images to display to the user, get instantiated via the effect of various operations
 test_image = []
 threshold_test_images = []
 despeckle_test_images = []
@@ -193,7 +194,7 @@ def threshold_test_image_generator(user_choice):
 
 	threshold_test_images = []  # Reset global array (Otherwise we just append over old images)
 
-	for i in range(len(test_image)):
+	for i in range(len(test_image) - 1):
 		if user_choice == 1:
 			threshold_test_images.append(otsu_threshold(test_image[i]))
 		elif user_choice == 2:
@@ -208,7 +209,7 @@ def despeckle_test_image_generator(user_choice, area):
 
 	despeckle_test_images = []  # Reset global array (Otherwise we just append over old images)
 
-	for i in range(len(test_image)):
+	for i in range(len(test_image) - 1):
 		if user_choice == 1:
 			despeckle_test_images.append(less_than_despeckle(test_image[i], area))
 		elif user_choice == 2:
@@ -224,7 +225,7 @@ def crop_test_image_generator(user_choice):
 	cropped_test_images = []  # Reset global array
 	scale = user_choice
 
-	for i in range(len(test_image)):
+	for i in range(len(test_image) - 1):
 		cropped_test_images.append(crop(despeckle_test_images[i], user_choice))
 
 
@@ -271,7 +272,7 @@ def image_processor():
 
 	# Threshold all images
 	for i in range(0, len(images)):
-		current_operation = progress_tracker(i + 1, len(images), "Thresholding")  # Shows user the programs progress
+		current_operation = progress_tracker(i + 1, len(images), "Thresholding ")  # Shows user the programs progress
 		if threshold_type == 1:
 			images[i] = otsu_threshold(images[i])
 		elif threshold_type == 2:
@@ -281,7 +282,7 @@ def image_processor():
 
 	# Despeckle all images
 	for i in range(0, len(images)):
-		current_operation = progress_tracker(i + 1, len(images), "Despeckeling")  # Shows user the programs progress
+		current_operation = progress_tracker(i + 1, len(images), "Despeckeling ")  # Shows user the programs progress
 		if despeckle_type[0] == 1 or 3:
 			images[i] = less_than_despeckle(images[i], despeckle_type[1])
 		else:
@@ -290,7 +291,7 @@ def image_processor():
 	# Crop all images
 	if perform_crop:
 		for i in range(0, len(images)):
-			current_operation = progress_tracker(i + 1, len(images), "Cropping")  # Shows user the programs progress
+			current_operation = progress_tracker(i + 1, len(images), "Cropping ")  # Shows user the programs progress
 			images[i] = crop(images[i])
 
 	return images
@@ -309,7 +310,7 @@ def analyze(processed_images):
 
 	# Iterate through the images counting porosity and surface area for each slice
 	for i in range(0, len(pimages)):
-		current_operation = progress_tracker(i + 1, len(pimages), 'Porosity estimation ')  # Shows user the programs progress
+		current_operation = progress_tracker(i + 1, len(pimages), "Porosity estimation")  # Shows user the programs progress
 		total_img_pixels = np.count_nonzero(pimages[i])
 		if total_img_pixels > 10:  # Exclude images that contain little to no white pixels
 			shape = shape_outliner(pimages[i])
@@ -330,10 +331,11 @@ def global_threshold(image):
 	return thres_img
 
 
-# TODO IMPLEMENT PHANSALKER
+# TODO IMPLEMENT PHANSALKAR ITS ALMOST DONE LETTTTTSSSS GOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO
 def phansalkar_threshold(image):
-	_, thres_img = cv2.threshold(image, 127, 255, cv2.THRESH_BINARY)
-	return thres_img
+	thres_img = opt_phansalkar.pfilter(image)
+	temp = np.float32(thres_img)
+	return temp * 255
 
 
 # Despeckle images using a remove small objects function, size of objects is either user determined or found

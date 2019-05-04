@@ -326,8 +326,9 @@ class ThresholdWindow(Window):
 		submit.grid(row=3, column=0)
 
 	def help(self):
-		temp = HelpWindow(Toplevel())
-		HelpWindow.display_help(temp, "Threshold.jpg")
+		pass
+		# temp = HelpWindow(Toplevel())
+		# HelpWindow.display_help(temp, "Threshold.jpg")
 
 	def transition(self):
 		self.destroy()
@@ -379,6 +380,11 @@ class DespeckleWindow(Window):
 		self.destroy()
 		ThresholdWindow(self.master)
 
+	def help(self):
+		pass
+		# temp = HelpWindow(Toplevel())
+		# HelpWindow.display_help(temp, "Despeckeling.jpg")
+
 
 class DespecklePopup(Frame):
 	def __init__(self, parent, choice):
@@ -399,9 +405,6 @@ class DespecklePopup(Frame):
 		self.Area_Entry = Entry(self, width=10)
 		self.Area_Entry.grid(row=0, column=1, pady=(130, 0))
 
-	def help(self):
-		temp = HelpWindow(Toplevel())
-		HelpWindow.display_help(temp, "Despeckeling.jpg")
 
 	def transition(self):
 		if validate_input(self.Area_Entry.get()):
@@ -442,8 +445,9 @@ class CropWindow(Window):
 		self.parent.button3.config(state='normal', bg=green)
 
 	def help(self):
-		temp = HelpWindow(Toplevel())
-		HelpWindow.display_help(temp, "Cropping.jpg")
+		# temp = HelpWindow(Toplevel())
+		# HelpWindow.display_help(temp, "Cropping.jpg")
+		pass
 
 	def transition(self):
 		self.parent.destroy()
@@ -484,7 +488,6 @@ class Image_Comparison(ExtendedPopupWindow):
 
 		j = 1
 		for i in range(0, 3):
-
 			OG = OG_images[i]
 			OG = cv2.resize(OG, (275, 275))
 			OG = ImageTk.PhotoImage(Image.fromarray(OG))
