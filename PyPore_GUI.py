@@ -1,8 +1,15 @@
+########################################################################################################################
+#CODE WRITTEN BY STEPHEN PACKER IN THE FALL TO SPRING OF 2018 - 2019. MAKES UP THE FRONTEND OF PYPORE WHICH STREAMLINES#
+#THE PROCESS OF SELECTING ALL THE APPROPRIATE OPTIONS (E.G SELECTING THRESHOLDING METHOD AND PARAMETERS) AND GIVES     #
+#VISUAL FEEDBACK TO HELP INFORM DECISIONS WHERE POSSIBLE. CHOICE MADE IN THE GUI ARE PASSED AND STORED IN THE BACKEND  #
+#TO BE ACCESSED WHEN NEEDED.                                                                                           #
+########################################################################################################################
+
 from tkinter import *
 from tkinter import filedialog
 from tkinter.ttk import Progressbar
 from PIL import ImageTk, Image
-import PyPore_New_GUI as backend
+import PyPore_Backend as backend
 import cv2
 import sys
 import numpy as np
@@ -71,7 +78,6 @@ class Window(Frame):
 
 
 class ExtendedPopupWindow(Frame):
-
 	def __init__(self, master=None):
 		Frame.__init__(self, master)
 		self.master = master
@@ -84,6 +90,7 @@ class ExtendedPopupWindow(Frame):
 
 
 class HelpWindow(Frame):
+
 	def __init__(self, master=None):
 		Frame.__init__(self, master)
 		self.master = master
@@ -155,6 +162,7 @@ class IntroWindow(Window):
 
 
 class ExcelPopup(Frame):
+
 	def __init__(self, parent, bottom_window):
 		super().__init__(parent)
 		self.parent = parent
@@ -191,6 +199,7 @@ class ExcelPopup(Frame):
 
 
 class AddInfoPopup(Frame):
+
 	def __init__(self, parent, root_window):
 		super().__init__(parent)
 		self.root_window = root_window
@@ -298,6 +307,7 @@ class ThresholdWindow(Window):
 	def __init__(self, parent):
 		super().__init__(parent)
 		self.parent = parent
+		self.f1 = Frame(self)
 
 		parent.button1.config(text="Otsu", command=lambda: Image_Comparison(Toplevel(), 1, self, "Thresholding"))
 		parent.button2.config(text="Global Means", command=self.global_means_thresh_popup, padx=122)
@@ -305,25 +315,28 @@ class ThresholdWindow(Window):
 
 	def global_means_thresh_popup(self):
 
-		f1 = Frame(self)
-		f1.grid(row=0, column=0, rowspan=3, sticky=(E + W + N + S))
-		f1.config(highlightbackground=green, highlightcolor=green, highlightthickness=2)
+		self.f1.grid(row=0, column=0, rowspan=3, sticky=(E + W + N + S))
+		self.f1.config(highlightbackground=green, highlightcolor=green, highlightthickness=2)
 
 		plt.hist(backend.test_image[1].ravel(), 256, [0, 256])
 		plt.savefig("Histogram.png")
 		New = cv2.imread("Histogram.png", 1)
 		New = cv2.resize(New, (350, 275))
 		New = ImageTk.PhotoImage(Image.fromarray(New))
-		img = Label(f1, image=New, width=350, height=275)
+		img = Label(self.f1, image=New, width=350, height=275)
 		img.image = New
 		img.grid(row=0, column=0)
 
-		thresh_scale = Scale(f1, from_=0, to=255, orient=HORIZONTAL, length=270)
+		thresh_scale = Scale(self.f1, from_=0, to=255, orient=HORIZONTAL, length=270)
 		thresh_scale.grid(row=1, column=0)
-		Label(f1, text="Select a threshold value:").grid(row=2, column=0, sticky=(E + W + N + S), padx=10)
+		Label(self.f1, text="Select a threshold value:").grid(row=2, column=0, sticky=(E + W + N + S), padx=10)
 
-		submit = Button(f1, text="submit", command=lambda: Image_Comparison(Toplevel(), 2, self, "Thresholding", thresh_scale.get()))
+		submit = Button(self.f1, text="submit", command=lambda: Image_Comparison(Toplevel(), 2, self, "Thresholding", thresh_scale.get()))
 		submit.grid(row=3, column=0)
+
+	def delete_left_popup(self):
+		self.f1.destroy()
+		self.f1 = Frame(self)
 
 	def help(self):
 		pass
@@ -355,11 +368,18 @@ class DespeckleWindow(Window):
 		self.parent.label.config(text="Auto Despeckeling")
 
 		def thread():
+			self.parent.button1.config(state='disable')
+			self.parent.button2.config(state='disable')
+
+			self.delete_left_popup()
 			area = backend.auto_despeckle_parameters()
 			self.parent.label.grid_forget()
 			self.parent.progress.grid_forget()
 
 			Image_Comparison(Toplevel(), 3, self, "Despeckeling", area)
+
+			self.parent.button1.config(state='active')
+			self.parent.button2.config(state='active')
 
 		# This threading allows us to see the status bar while images are loading, keeps system status visible
 		threading.Thread(target=thread).start()
@@ -367,6 +387,17 @@ class DespeckleWindow(Window):
 	def create_pop_up(self, choice):
 		f1 = DespecklePopup(self, choice)
 		f1.grid(row=0, column=0, rowspan=3, sticky=(E + W + N + S))
+
+	def help(self):
+		pass
+		# temp = HelpWindow(Toplevel())
+		# HelpWindow.display_help(temp, "Despeckeling.jpg")
+
+	def delete_left_popup(self):
+		tk_img = ImageTk.PhotoImage(file="Logo.gif")
+		img = Label(self, image=tk_img, width=350, height=350)
+		img.image = tk_img
+		img.grid(row=0, column=0, rowspan=3)
 
 	def transition(self):
 		if crop:
@@ -380,13 +411,9 @@ class DespeckleWindow(Window):
 		self.destroy()
 		ThresholdWindow(self.master)
 
-	def help(self):
-		pass
-		# temp = HelpWindow(Toplevel())
-		# HelpWindow.display_help(temp, "Despeckeling.jpg")
-
 
 class DespecklePopup(Frame):
+
 	def __init__(self, parent, choice):
 		super().__init__(parent)
 		self.choice = choice
@@ -404,7 +431,6 @@ class DespecklePopup(Frame):
 
 		self.Area_Entry = Entry(self, width=10)
 		self.Area_Entry.grid(row=0, column=1, pady=(130, 0))
-
 
 	def transition(self):
 		if validate_input(self.Area_Entry.get()):
@@ -459,6 +485,7 @@ class CropWindow(Window):
 
 
 class Image_Comparison(ExtendedPopupWindow):
+
 	def __init__(self, parent, choice, below_window, operation, secondary_value=None):
 		super().__init__(parent)
 		self.parent = parent
@@ -471,9 +498,13 @@ class Image_Comparison(ExtendedPopupWindow):
 		Label(self, text="Original").grid(row=0, column=0)
 		Label(self, text="   New   ").grid(row=0, column=1)
 
+		# TODO FIGURE OUT WHEN TO CLOSE LEFT POPUP
 		if self.operation == "Thresholding":
 			if choice == 2:
 				backend.global_means_thresh_value = secondary_value  # Set the global means threshold value
+			# if choice == 3: NEED TO PLUG IN THE USER CONFIG OF PHANSALKAR + CONSIDER THREADING IT
+			# 	phansalkar
+			self.below_window.delete_left_popup()
 			backend.threshold_test_image_generator(choice)
 			OG_images = backend.test_image
 			New_images = backend.threshold_test_images

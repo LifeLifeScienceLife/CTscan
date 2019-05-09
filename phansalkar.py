@@ -5,19 +5,18 @@ import itertools
 from scipy import ndimage as ndi
 from collections.abc import Iterable
 from skimage import util
+from math import e
 
-# Parameters
-p = 3
-q = 10
-k = .25
-R = .5
-e = 2.718281828
+# Fixed Parameters
+q = 10  # q is a constant that determines how the exponential term affects the threshold value
+R = .5  # R is the dynamic range of standard deviation (0.5 for normalized images)
 
 
 # Slight modification of preexisting algorithm used for Niblack and Sauvola Thresholding, based of the scipy
 # implementation. The real trick is using their version of _mean_std which efficiently computes the mean, std for
 # each pixel group (sliding window). These values are then plugged into phansalkers equation and compared to the original
-def pfilter(img):
+# to create a binary image. The values k and p are tunable parameters that change how the algorithm operate.
+def pfilter(img, k=.25, p=3):
     og_img = np.array(img)/255  # Normalize the images
     m, s = _mean_std(og_img, 3)
     return og_img > m * (1 + (p * (e ** (-q * m))) + (k * ((s / R) - 1)))
