@@ -9,12 +9,12 @@ from tkinter import *
 from tkinter import filedialog
 from tkinter.ttk import Progressbar
 from PIL import ImageTk, Image
-import PyPore_Backend as backend
-import cv2
 import sys
 import numpy as np
 import threading
 from matplotlib import pyplot as plt
+import cv2
+import PyPore_Backend as backend
 
 crop = False
 green = "#53c653"
@@ -117,8 +117,8 @@ class IntroWindow(Window):
 		self.parent = parent
 
 		parent.button1.config(text="Add Images", bg=green, command=self.img_browse)
-		parent.button2.config(state='disable', text="Add Output Excel File", command=self.excel_browse)
-		parent.button3.config(state='disable', text="Add Additional Information", command=self.add_info, padx=75)
+		parent.button2.config(text="Add Output Excel File", command=self.excel_browse)
+		parent.button3.config(text="Add Additional Information", command=self.add_info, padx=75)
 
 	# Read in image files using tkinter filedialog. Uses threading to display loading bar while reading in images.
 	def img_browse(self):

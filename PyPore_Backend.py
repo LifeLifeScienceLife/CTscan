@@ -22,6 +22,7 @@ from skimage.morphology import remove_small_objects
 from multiprocessing.dummy import Pool as ThreadPool
 from scipy.ndimage import label
 
+
 ################################Defining Global Variables (For GUI interfacing)#########################################
 
 # Collections of three images to display to the user, get instantiated via the effect of various operations
