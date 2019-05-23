@@ -102,7 +102,7 @@ def file_reader(file_location):
 
 		test_image = []  # Reset global value so I do not append on top of old values
 
-		# Get a subset of images for test images
+		# Get a subset of images for test images (guarantees at least 3 images, but NOT MORE THAN THREE)
 		for i in range(0, len(images), len(images) // 3):
 			test_image.append(images[i])
 
@@ -116,6 +116,7 @@ def old_excel_reader(excel_file):
 	global workbook, worksheet, excel_file_name
 
 	if excel_file is not None and len(excel_file) > 1:  # Ensures the user has actually selected an excel file
+
 		excel_file_name = excel_file
 		workbook = load_workbook(excel_file)
 
@@ -134,21 +135,24 @@ def old_excel_reader(excel_file):
 	return False   # The workbook specified was not a valid excel workbook
 
 
-# TODO DO I NEED AN IF CASE LIKE IN OLD EXCEL READER, I DONT THINK SO
 # Creates a new excel file (Note, input validation is performed in the frontend as part of filedialog.asksaveasfilename)
 def new_excel_reader(excel_file):
 	global workbook, worksheet, excel_file_name
 
-	# Create the excel file
-	workbook = openpyxl.Workbook()
-	excel_file_name = excel_file + ".xlsx"
+	if excel_file is not None and len(excel_file) > 1:  # Ensures the user has actually selected an excel file
 
-	# Create a new worksheet in the file formatted for PyPore
-	worksheet = workbook.active
-	worksheet.title = "PyPore Data"
-	worksheet_headers()
+		# Create the excel file
+		workbook = openpyxl.Workbook()
+		excel_file_name = excel_file + ".xlsx"
 
-	return True
+		# Create a new worksheet in the file formatted for PyPore
+		worksheet = workbook.active
+		worksheet.title = "PyPore Data"
+		worksheet_headers()
+
+		return True
+
+	return False   # The workbook specified was not a valid excel workbook
 
 
 # Simple helper function that creates headers for newly created excel sheets
@@ -206,7 +210,7 @@ def threshold_test_image_generator(user_choice):
 	threshold_test_images = []  # Reset global array (Otherwise we just append over old images)
 
 	# Apply the appropriate thresholding to the test images
-	for i in range(len(test_image) - 1):
+	for i in range(len(test_image)):
 		if user_choice == 1:
 			threshold_test_images.append(otsu_threshold(test_image[i]))
 		elif user_choice == 2:
@@ -222,13 +226,13 @@ def despeckle_test_image_generator(user_choice, area):
 	despeckle_test_images = []  # Reset global array (Otherwise we just append over old images)
 
 	# Apply the appropriate despeckeling to the test images
-	for i in range(len(test_image) - 1):
+	for i in range(len(test_image)):
 		if user_choice == 1:
-			despeckle_test_images.append(less_than_despeckle(test_image[i], area))
+			despeckle_test_images.append(less_than_despeckle(threshold_test_images[i], area))
 		elif user_choice == 2:
-			despeckle_test_images.append(greater_than_despeckle(test_image[i], area))
+			despeckle_test_images.append(greater_than_despeckle(threshold_test_images[i], area))
 		elif user_choice == 3:
-			despeckle_test_images.append(less_than_despeckle(test_image[i], area))
+			despeckle_test_images.append(less_than_despeckle(threshold_test_images[i], area))
 
 
 # Generates the images the user will see when doing a image comparison for cropping in the front end
@@ -239,7 +243,7 @@ def crop_test_image_generator(user_choice):
 	scale = user_choice
 
 	# Crop Test Images
-	for i in range(len(test_image) - 1):
+	for i in range(len(test_image)):
 		cropped_test_images.append(crop(despeckle_test_images[i], user_choice))
 
 
@@ -265,16 +269,21 @@ def main_flow():
 
 	porosity = np.average(np.array(porosities))
 
+	sheet_open = False
 	data_writer(porosity, volume)
-	workbook.save(excel_file_name)
+
+	while not sheet_open:
+		try:
+			workbook.save(excel_file_name)
+			sheet_open = True
+		except PermissionError:
+			current_operation = "Cannot save to an open excel file, please close it!"
 
 	if save_images:
 		current_operation = "Saving Images"
 		output_folder = output_images()
 		for i in range(len(images)):
 			cv2.imwrite(output_folder + output_image_filename[0] + str(i) + "." + output_image_filename[1], images[i])
-
-	# print(excel_file_name)  # Test that the excel file is being created and saved to appropriately
 
 	return  # Needs to return to indicate the end of the backend, at which point we kill the loading screen.
 
@@ -297,10 +306,10 @@ def image_processor():
 	# Despeckle all images
 	for i in range(0, len(images)):
 		current_operation = progress_tracker(i + 1, len(images), "Despeckeling ")  # Shows user the programs progress
-		if despeckle_type[0] == 1 or 3:  # option 3 auto despeckle really just generates an area for min despeckle
-			images[i] = less_than_despeckle(images[i], despeckle_type[1])
+		if despeckle_type[0] == 1 or despeckle_type[0] == 3:  # option 3 auto despeckle really just generates an area for min despeckle
+			images[i] = less_than_despeckle(images[i], despeckle_type[1])  # Passing area to despeckle
 		else:
-			images[i] = greater_than_despeckle(images[i], despeckle_type[1])
+			images[i] = greater_than_despeckle(images[i], despeckle_type[1])  # Passing area to despeckle
 
 	# Crop all images
 	if perform_crop:
@@ -534,7 +543,8 @@ def data_writer(porosity, volume):
 	ws = worksheet
 
 	i = 1  # We loop to find empty cells before outputting the results
-	while ws.cell(row=i, column=2).value is not None:
+	while ws.cell(row=i, column=2).value is not None and ws.cell(row=i, column=3).value is not None \
+		and ws.cell(row=i, column=4).value is not None and ws.cell(row=i, column=5).value is not None:
 		i += 1
 	ws.cell(row=i, column=1).value = "Trial %d" % (i - 1)
 	ws.cell(row=i, column=2).value = porosity

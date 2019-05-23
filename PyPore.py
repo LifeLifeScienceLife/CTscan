@@ -18,10 +18,13 @@ import PyPore_Backend as backend
 
 crop = False
 green = "#53c653"
+mid_x = None
+mid_y = None
 
 
 # Basic outline of a window for which all other window variants will inherit from
 class Window(Frame):
+	global mid_x, mid_y
 
 	# create default parameters for all windows
 	def __init__(self, master=None):
@@ -117,8 +120,8 @@ class IntroWindow(Window):
 		self.parent = parent
 
 		parent.button1.config(text="Add Images", bg=green, command=self.img_browse)
-		parent.button2.config(text="Add Output Excel File", command=self.excel_browse)
-		parent.button3.config(text="Add Additional Information", command=self.add_info, padx=75)
+		parent.button2.config(state='disable', text="Add Output Excel File", command=self.excel_browse)
+		parent.button3.config(state='disable', text="Add Additional Information", command=self.add_info, padx=75)
 
 	# Read in image files using tkinter filedialog. Uses threading to display loading bar while reading in images.
 	def img_browse(self):
@@ -260,14 +263,17 @@ class AddInfoPopup(Frame):
 				else:
 					valid_voxel = False
 					popupmsg("Please enter a number for pixel size")
+			else:
+				backend.voxel_size = None
 
 			# Ensures user selects a valid image file name
 			if self.var2.get() == 3:
 				if self.img_file_path is None:
-					popupmsg("Please input a valid image filename")
 					valid_image = False
 				else:
 					backend.save_images = True
+			else:
+				backend.save_images = False
 
 			def set_crop_parameters():
 				global crop
@@ -275,6 +281,9 @@ class AddInfoPopup(Frame):
 				if self.var3.get() == 5:
 					crop = True
 					backend.crop_choice(True)
+				else:
+					crop = False
+					backend.crop_choice(False)
 
 				self.root_window.label.grid_forget()
 				self.root_window.progress.grid_forget()
@@ -297,7 +306,7 @@ class AddInfoPopup(Frame):
 
 		img_file_path = (filedialog.asksaveasfilename(defaultextension=".jpg", filetypes=mask, confirmoverwrite=False))
 		if not backend.save_images_as(img_file_path):
-			popupmsg("Please Input A Valid Filename")
+			popupmsg("Please Input A Valid Filename For The New Images", 350)
 		else:
 			self.img_file_path = img_file_path
 
@@ -318,7 +327,7 @@ class ThresholdWindow(Window):
 		self.f1.grid(row=0, column=0, rowspan=3, sticky=(E + W + N + S))
 		self.f1.config(highlightbackground=green, highlightcolor=green, highlightthickness=2)
 
-		plt.hist(backend.test_image[1].ravel(), 256, [0, 256])
+		plt.hist(backend.test_image[1].ravel(), 256, [1, 256])
 		plt.savefig("Histogram.png")
 		New = cv2.imread("Histogram.png", 1)
 		New = cv2.resize(New, (350, 275))
@@ -476,7 +485,7 @@ class CropWindow(Window):
 		pass
 
 	def transition(self):
-		self.parent.destroy()
+		self.parent.withdraw()
 		call_backend()
 
 	def undo(self):
@@ -498,13 +507,13 @@ class Image_Comparison(ExtendedPopupWindow):
 		Label(self, text="Original").grid(row=0, column=0)
 		Label(self, text="   New   ").grid(row=0, column=1)
 
-		# TODO FIGURE OUT WHEN TO CLOSE LEFT POPUP
 		if self.operation == "Thresholding":
 			if choice == 2:
 				backend.global_means_thresh_value = secondary_value  # Set the global means threshold value
 			# if choice == 3: NEED TO PLUG IN THE USER CONFIG OF PHANSALKAR + CONSIDER THREADING IT
 			# 	phansalkar
-			self.below_window.delete_left_popup()
+			else:
+				self.below_window.delete_left_popup()
 			backend.threshold_test_image_generator(choice)
 			OG_images = backend.test_image
 			New_images = backend.threshold_test_images
@@ -556,12 +565,18 @@ class Image_Comparison(ExtendedPopupWindow):
 
 
 # FROM https://pythonprogramming.net/tkinter-popup-message-window/
-def popupmsg(msg):
+def popupmsg(msg, width=250):
+
+	height = 100
+	x = mid_x - width/2
+	y = mid_y - height/2
+
 	popup = Tk()
 	popup.iconbitmap('PyPore.ico')
-	popup.title("!")
+	popup.title("Error")
 	label = Label(popup, text=msg)
 	label.pack(side="top", fill="x", pady=10)
+	popup.geometry('%dx%d+%d+%d' % (width, height, x, y))
 	B1 = Button(popup, text="Okay", command=popup.destroy)
 	B1.pack()
 	popup.mainloop()
@@ -582,5 +597,9 @@ def call_backend():
 
 if __name__ == "__main__":
 	root = Tk()
+
+	mid_x = root.winfo_screenwidth()/2
+	mid_y = root.winfo_screenheight()/2
+
 	app = IntroWindow(root)
 	root.mainloop()

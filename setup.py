@@ -1,7 +1,9 @@
-# ESSENTIALLY EVERY LINE WAS TAKEN FROM DIFFERENT STACK OVERFLOW OR GITHUB PAGES TOO MANY TO MENTION SPECIFICALLY.
-# OF NOTE YOU MUST GO INTO THE MALTREATING FILE CREATED IN BUILD AND TURN Pool into pool (lowercase the p).
-# SPECIAL THANKS TO https://www.youtube.com/watch?v=DoHWJV8iVTQ&list=PLhTjy8cBISEp6lNKUO3iwbB1DKAkRwutl&index=30
-# HIS ENTIRE TUTORIAL SERIES WAS SUPER HELPFUL DURING THIS PROJECT.
+########################################################################################################################
+# ESSENTIALLY EVERY LINE WAS TAKEN FROM DIFFERENT STACK OVERFLOW OR GITHUB PAGES TOO MANY TO MENTION SPECIFICALLY.     #
+# OF NOTE YOU MUST GO INTO THE MULTITHREADING FILE CREATED IN BUILD AND TURN Pool into pool (lowercase the p).         #
+# SPECIAL THANKS TO https://www.youtube.com/watch?v=DoHWJV8iVTQ&list=PLhTjy8cBISEp6lNKUO3iwbB1DKAkRwutl&index=30       #
+# HIS ENTIRE TUTORIAL SERIES WAS SUPER HELPFUL DURING THIS PROJECT.                                                    #
+########################################################################################################################
 
 # Use python setup.py build in the terminal to build the exe.
 
@@ -22,7 +24,7 @@ additional_mods = ['numpy.core._methods', 'numpy.lib.format', 'numpy.core._dtype
 build_exe_options = {'includes': additional_mods, "packages": ["os"], 'include_files': ['tk86t.dll', 'tcl86t.dll'], 'excludes': 'scipy.spatial.cKDTree'}
 
 # GUI applications require a different base on Windows (the default is for a
-# console application). # COMMENT THESE TWO LINES TO GO INTO DEBUG MODE
+# console application). # COMMENT THESE TWO LINES TO GO INTO DEBUG MODE (IF STATEMENT)
 base = None
 if sys.platform == "win32":
     base = "Win32GUI"
