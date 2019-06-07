@@ -1,3 +1,5 @@
+# The newest and most fully version of feature of PyPore with no GUI linkage.
+
 import cv2
 import glob
 import random
@@ -29,7 +31,8 @@ def main():
 	while not valid_voxel_size:
 		voxel_size = input("What is the voxel size for your images in um: ")
 		try:
-			voxel_size = int(voxel_size) ** 3
+			voxel_size = np.float64(voxel_size) * (10 ** -4)  # Converting um to cm
+			voxel_size = voxel_size ** 3  # Cubing cm
 			valid_voxel_size = True
 		except ValueError:
 			print("Please enter an integer")
@@ -49,7 +52,15 @@ def main():
 	volume = count_volume(surface_area, voxel_size)
 
 	data_writer(ws, porosity, volume)  # Write the porosity to the excel file
-	wb.save(save_as)  # Saves the excel file
+
+	sheet_open = False
+
+	while not sheet_open:
+		try:
+			wb.save(save_as)  # Saves the excel file
+			sheet_open = True
+		except PermissionError:
+			input("Please close the excel sheet, and press Y to continue: ")
 
 
 # Analyze preforms porosity and surface area measurements on binary images. First each image gets a ROI shrinkwrap
@@ -125,6 +136,8 @@ def file_reader():
 			continue
 		break
 
+	print("Test")
+
 	return images
 
 
@@ -137,6 +150,7 @@ def excel_handler():
 		if old_excel == "Y" or old_excel == "y":  # User has selected a pre-existing workbook
 			excel_file = file_location + "/" + input("Please specify the excel file name: ") + ".xlsx"
 			try:
+				print(excel_file)
 				wb = load_workbook(excel_file)
 				ws = wb.active
 				save_as = excel_file
@@ -147,7 +161,7 @@ def excel_handler():
 		elif old_excel == "N" or old_excel == "n":  # User has selected to create a new workbook
 			wb = openpyxl.Workbook()
 			save_as = input("What would you like to save the excel book as: ")
-			if re.match("^[A-Za-z0-9_+@#^&()_,.!-]*$", save_as):
+			if re.match("^[A-Za-z0-9_+@#^&(),.!-]*$", save_as):
 				save_as = file_location + "/" + save_as + ".xlsx"
 				ws = wb.active
 				valid_file = True
@@ -340,7 +354,7 @@ def despeckle(image, min_area):
 # Counts the volume for a CT scan (Multiply the surface area by voxel size) Returns volume in cm^3 (I think)
 # NOTE: Assumes no porosity in volume calculation, for 'real' volume, simply subtract volume*porosity from this volume
 def count_volume(total_voxels, voxel_size):
-	volume = np.float64(total_voxels * voxel_size) * (10 ** - 10)
+	volume = total_voxels * voxel_size
 	return volume
 
 
